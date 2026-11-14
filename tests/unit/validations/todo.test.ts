@@ -3,7 +3,7 @@ import { createTodoSchema, deleteTodoSchema } from "@/lib/validations/todo";
 
 describe("Validation Schemas: Todo", () => {
   describe("createTodoSchema", () => {
-    it("should accept valid title and description", () => {
+    it("should accept valid title and normal description string", () => {
       const input = {
         title: "Finish take-home architecture",
         description: "Configure Drizzle, tRPC, and tests",
@@ -17,7 +17,7 @@ describe("Validation Schemas: Todo", () => {
       }
     });
 
-    it("should accept valid title without description", () => {
+    it("should accept valid title when description is omitted (undefined)", () => {
       const input = {
         title: "Buy groceries",
       };
@@ -30,17 +30,57 @@ describe("Validation Schemas: Todo", () => {
       }
     });
 
-    it("should trim title whitespace and convert empty description to undefined", () => {
+    it("should accept null description and normalize it to undefined", () => {
+      const input = {
+        title: "Submit code review",
+        description: null,
+      };
+
+      const result = createTodoSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.title).toBe("Submit code review");
+        expect(result.data.description).toBeUndefined();
+      }
+    });
+
+    it("should accept empty string description and normalize it to undefined", () => {
+      const input = {
+        title: "Submit pull request",
+        description: "",
+      };
+
+      const result = createTodoSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.title).toBe("Submit pull request");
+        expect(result.data.description).toBeUndefined();
+      }
+    });
+
+    it("should accept whitespace-only description and normalize it to undefined", () => {
+      const input = {
+        title: "Check server logs",
+        description: "     ",
+      };
+
+      const result = createTodoSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.title).toBe("Check server logs");
+        expect(result.data.description).toBeUndefined();
+      }
+    });
+
+    it("should trim leading and trailing whitespace from title", () => {
       const input = {
         title: "   Trimmed Title   ",
-        description: "   ",
       };
 
       const result = createTodoSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.title).toBe("Trimmed Title");
-        expect(result.data.description).toBeUndefined();
       }
     });
 
@@ -95,7 +135,7 @@ describe("Validation Schemas: Todo", () => {
   });
 
   describe("deleteTodoSchema", () => {
-    it("should accept valid UUID", () => {
+    it("should accept valid UUID format", () => {
       const input = {
         id: "123e4567-e89b-12d3-a456-426614174000",
       };
@@ -107,7 +147,7 @@ describe("Validation Schemas: Todo", () => {
       }
     });
 
-    it("should reject non-UUID string", () => {
+    it("should reject malformed non-UUID identifier", () => {
       const input = {
         id: "not-a-valid-uuid-123",
       };

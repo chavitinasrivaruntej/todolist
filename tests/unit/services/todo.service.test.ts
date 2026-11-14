@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TodoService } from "@/server/services/todo.service";
 import { type ITodoRepository } from "@/server/repositories/todo.repository";
 import { type Todo } from "@/db/schema/todos";
-import { TRPCError } from "@trpc/server";
+import { NotFoundError, ValidationError } from "@/server/errors";
 
 describe("TodoService", () => {
   let mockRepository: ITodoRepository;
@@ -39,7 +39,7 @@ describe("TodoService", () => {
   });
 
   describe("createTodo", () => {
-    it("should create a todo through the repository with trimmed title", async () => {
+    it("should create a todo through repository with trimmed title and normalized description", async () => {
       vi.mocked(mockRepository.create).mockResolvedValue(sampleTodo);
 
       const result = await service.createTodo({
@@ -54,55 +54,38 @@ describe("TodoService", () => {
       expect(result).toEqual(sampleTodo);
     });
 
-    it("should throw BAD_REQUEST when title is empty or only whitespace", async () => {
+    it("should throw domain-level ValidationError when title is solely whitespace", async () => {
       await expect(
         service.createTodo({
-          title: "   ",
+          title: "    ",
           description: undefined,
         })
-      ).rejects.toThrowError(TRPCError);
+      ).rejects.toThrow(ValidationError);
 
       expect(mockRepository.create).not.toHaveBeenCalled();
     });
   });
 
   describe("deleteTodo", () => {
-    it("should delete existing todo and return success", async () => {
-      vi.mocked(mockRepository.findById).mockResolvedValue(sampleTodo);
+    it("should delete existing todo in a single atomic call and return success", async () => {
       vi.mocked(mockRepository.delete).mockResolvedValue(true);
 
       const result = await service.deleteTodo({ id: sampleTodo.id });
 
-      expect(mockRepository.findById).toHaveBeenCalledWith(sampleTodo.id);
+      // Verifies findById is NOT called (redundant roundtrip eliminated)
+      expect(mockRepository.findById).not.toHaveBeenCalled();
       expect(mockRepository.delete).toHaveBeenCalledWith(sampleTodo.id);
       expect(result).toEqual({ success: true, id: sampleTodo.id });
     });
 
-    it("should throw NOT_FOUND TRPCError if todo does not exist", async () => {
-      vi.mocked(mockRepository.findById).mockResolvedValue(null);
-
-      await expect(
-        service.deleteTodo({ id: "123e4567-e89b-12d3-a456-426614174000" })
-      ).rejects.toThrowError(
-        expect.objectContaining({
-          code: "NOT_FOUND",
-        })
-      );
-
-      expect(mockRepository.delete).not.toHaveBeenCalled();
-    });
-
-    it("should throw INTERNAL_SERVER_ERROR if repository delete fails", async () => {
-      vi.mocked(mockRepository.findById).mockResolvedValue(sampleTodo);
+    it("should throw domain-level NotFoundError when record does not exist in database", async () => {
       vi.mocked(mockRepository.delete).mockResolvedValue(false);
 
       await expect(
-        service.deleteTodo({ id: sampleTodo.id })
-      ).rejects.toThrowError(
-        expect.objectContaining({
-          code: "INTERNAL_SERVER_ERROR",
-        })
-      );
+        service.deleteTodo({ id: "123e4567-e89b-12d3-a456-426614174000" })
+      ).rejects.toThrow(NotFoundError);
+
+      expect(mockRepository.delete).toHaveBeenCalledWith("123e4567-e89b-12d3-a456-426614174000");
     });
   });
 });

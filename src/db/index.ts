@@ -1,33 +1,77 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { DatabaseConfigurationError } from "@/server/errors";
 
-/**
- * Global cache to prevent multiple client instances during Next.js hot reloads in development.
- */
 declare global {
   // eslint-disable-next-line no-var
-  var __dbClient: postgres.Sql | undefined;
+  var __dbInstance: PostgresJsDatabase<typeof schema> | undefined;
 }
 
-// Fallback to placeholder during build time if environment variable is not yet set
-const connectionString =
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:placeholder@db.placeholder.supabase.co:5432/postgres";
+/**
+ * Validates that DATABASE_URL is present and does not contain unresolved placeholders.
+ * Never prints the raw connection string or credentials to logs or error messages.
+ */
+function getConnectionString(): string {
+  const url = process.env.DATABASE_URL?.trim();
 
-// Supabase PostgreSQL connection with pooling options
-const client =
-  globalThis.__dbClient ??
-  postgres(connectionString, {
+  if (!url) {
+    throw new DatabaseConfigurationError(
+      "DATABASE_URL is not set. Please configure a valid PostgreSQL connection string in .env.local."
+    );
+  }
+
+  if (
+    url.includes("[YOUR_DB_PASSWORD]") ||
+    url.includes("[YOUR-PASSWORD]") ||
+    url.includes("placeholder")
+  ) {
+    throw new DatabaseConfigurationError(
+      "DATABASE_URL contains an unconfigured placeholder. Please replace [YOUR_DB_PASSWORD] with your actual Supabase database password in .env.local."
+    );
+  }
+
+  return url;
+}
+
+/**
+ * Lazily creates or returns the singleton Drizzle database instance.
+ * Ensures the build phase can evaluate routes without a live DB connection,
+ * while throwing clear configuration errors at runtime when queries are executed.
+ */
+function getDatabase(): PostgresJsDatabase<typeof schema> {
+  if (globalThis.__dbInstance) {
+    return globalThis.__dbInstance;
+  }
+
+  const connectionString = getConnectionString();
+
+  const client = postgres(connectionString, {
     prepare: false, // Disabling prepared statements for compatibility with transaction poolers (PgBouncer)
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__dbClient = client;
+  const instance = drizzle(client, { schema });
+
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.__dbInstance = instance;
+  }
+
+  return instance;
 }
 
-export const db = drizzle(client, { schema });
-export type Database = typeof db;
+/**
+ * Proxy object exposing the Drizzle database interface.
+ * Defers connection validation until a database method (e.g. select, insert, delete) is invoked.
+ */
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, prop, receiver) {
+    const realDb = getDatabase();
+    const value = Reflect.get(realDb, prop, receiver);
+    return typeof value === "function" ? value.bind(realDb) : value;
+  },
+});
+
+export type Database = PostgresJsDatabase<typeof schema>;
