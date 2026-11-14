@@ -1,18 +1,20 @@
-# Caize Todo Application — Multi-List Personal Task Manager (Phase 2)
+# Caize Todo Application — Dual-View Personal Task Manager & Kanban Board (Phase 3)
 
-A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, and real-world database persistence with Supabase PostgreSQL.
+A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, dual-view visualization (List & Kanban Board), and real-world database persistence with Supabase PostgreSQL.
 
 ---
 
 ## 1. Project Overview & Evolution
 
-Evolved from a single-list prototype into a **multiple-list personal Todo manager**. Users can create, rename, and delete custom task lists (e.g., *College*, *Personal*, *Projects*, *Habits*), organize tasks with three-state status tracking (`TODO`, `IN_PROGRESS`, `DONE`), and delete lists safely with protected cascade deletion policies.
+Evolved from a multi-list task manager (Phase 2) into a **dual-view productivity workspace (Phase 3)**. Users can seamlessly switch between a traditional **List View** and a 3-column **Kanban Board View** within each personal Todo list, with independent view preferences preserved across lists.
 
 ### Core Architectural Pillars
 - **Strict Layer Separation**: Presentation, API Transport, Domain Services, Data Access (Repositories), Validations, and Database Schema remain strictly decoupled.
+- **Unified Domain Data**: Both List and Kanban Board views operate on the exact same underlying Todo records and database status enum (`'TODO' | 'IN_PROGRESS' | 'DONE'`).
 - **Relational Integrity**: Foreign key enforcement (`todos.list_id` → `todo_lists.id`) with PostgreSQL cascade deletes and compound index `(list_id, created_at)`.
-- **Domain-Driven Error Handling**: Domain services throw lightweight, framework-agnostic errors (`NotFoundError`, `ValidationError`) mapped centrally to standard `TRPCError` codes at the network boundary.
-- **Automated Test Suite**: 79 automated tests across Vitest covering validations, services, repositories, tRPC caller pipelines, and interactive UI components.
+- **Per-List View Preference Persistence**: Uses a resilient client hook backed by `localStorage` to remember whether each list was last viewed in List or Board mode without SSR hydration mismatches.
+- **Accessible Kanban Navigation**: Dedicated status transition action buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`) and an accessible mobile tab switcher for responsive column navigation.
+- **Automated Test Suite**: 95 automated tests across Vitest covering validations, hooks, services, repositories, tRPC caller pipelines, and interactive UI components.
 - **Live Supabase PostgreSQL Verification**: Verified live with transaction pooler runtime and session pooler migrations.
 
 ---
@@ -35,7 +37,7 @@ Evolved from a single-list prototype into a **multiple-list personal Todo manage
 ## 3. Architecture & Layer Responsibilities
 
 ```
-[Presentation Layer] (ListSidebar, TodoDashboard, TodoForm, TodoItem, TodoList)
+[Presentation Layer] (ListSidebar, TodoDashboard, ViewSwitcher, TodoList, KanbanBoard)
          │
          ▼
 [API Layer] (tRPC Routers: todoList, todo)
@@ -53,11 +55,13 @@ Evolved from a single-list prototype into a **multiple-list personal Todo manage
 ### Layer Breakdown
 
 1. **Presentation Layer (`src/components/`)**
-   - **`ListSidebar`**: Sidebar navigation displaying all lists, task count badges, inline list creation, inline renaming, and safe deletion confirmation dialogs.
-   - **`TodoDashboard`**: Responsive two-column dashboard coordinating list selection and task view.
-   - **`TodoForm`**: Task creation with title, optional description, and initial status selector (`TODO`, `IN_PROGRESS`, `DONE`).
-   - **`TodoItem`**: Individual task card with interactive status dropdown (color badges, strikethrough for completed tasks), creation timestamp, inline delete confirmation, and retry feedback.
-   - **`TodoList`**: Task listing for the selected list with loading skeleton, error fallback, and empty states.
+   - **`ViewSwitcher`**: Segmented button control toggling between List and Board view modes.
+   - **`KanbanBoard`**: 3-column Kanban workspace (`To Do`, `In Progress`, `Done`) with desktop side-by-side grid and mobile tab bar.
+   - **`KanbanColumn`**: Status column container displaying task counts and empty states.
+   - **`KanbanCard`**: Task card with direct status transition actions (`→ In Progress`, `✓ Done`, `↩ Reopen`), inline delete confirmation, and mutation error retry buttons.
+   - **`TodoList` & `TodoItem`**: Preserved traditional list view with status badges and deletion feedback.
+   - **`TodoForm`**: Always accessible in both views to add tasks with initial status selection.
+   - **`ListSidebar`**: Sidebar navigation displaying all personal lists with task count badges and safe deletion warnings.
 
 2. **API Layer (`src/server/api/`)**
    - **`list.router.ts`**: Procedures `todoList.list`, `todoList.create`, `todoList.rename`, `todoList.delete`.
@@ -65,8 +69,8 @@ Evolved from a single-list prototype into a **multiple-list personal Todo manage
    - **`trpc.ts`**: Centralized error middleware translating application errors (`NotFoundError` → `NOT_FOUND`, `ValidationError` → `BAD_REQUEST`, `DatabaseConfigurationError` → `INTERNAL_SERVER_ERROR`).
 
 3. **Business Logic Layer (`src/server/services/`)**
-   - **`todo-list.service.ts`**: Enforces business rules for lists: trimmed non-empty names, safe deletion policy (rejects list deletion if tasks > 0 unless `force: true`).
-   - **`todo.service.ts`**: Enforces task creation rules: non-empty trimmed titles, list existence verification, default `TODO` status, single atomic deletion.
+   - **`todo-list.service.ts`**: Enforces list rules, name trimming, and safe deletion policies.
+   - **`todo.service.ts`**: Enforces task creation rules, status updates, and single atomic deletions.
 
 4. **Data Access Layer (`src/server/repositories/`)**
    - **`todo-list.repository.ts`**: Single efficient `LEFT JOIN ... COUNT(todos.id) GROUP BY todo_lists.id` for list counts, atomic name update, atomic delete with `RETURNING id`.
@@ -75,57 +79,38 @@ Evolved from a single-list prototype into a **multiple-list personal Todo manage
 5. **Database Layer (`src/db/`)**
    - **`schema/lists.ts`**: `todo_lists` table (`id` UUID, `name` text, `created_at`, `updated_at`).
    - **`schema/todos.ts`**: `todos` table (`id` UUID, `list_id` UUID foreign key with `onDelete: cascade`, `title`, `description`, `status` enum `['TODO', 'IN_PROGRESS', 'DONE']`, `created_at`, `updated_at`), with compound index `(list_id, created_at)`.
-   - **`migrations/`**: Drizzle SQL migrations (`0000_futuristic_fixer.sql`, `0001_lucky_alice.sql`).
+   - **`migrations/`**: Drizzle SQL migrations (`0000_futuristic_fixer.sql`, `0001_lucky_alice.sql`, `0002_fix_default_list_uuid.sql`).
 
 ---
 
-## 4. Database Schema
-
-```sql
--- Status Enum
-CREATE TYPE "public"."todo_status" AS ENUM('TODO', 'IN_PROGRESS', 'DONE');
-
--- Lists Table
-CREATE TABLE "todo_lists" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "name" varchar(100) NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
-
--- Todos Table
-CREATE TABLE "todos" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "list_id" uuid NOT NULL REFERENCES "todo_lists"("id") ON DELETE CASCADE,
-  "title" varchar(255) NOT NULL,
-  "description" text,
-  "status" "todo_status" DEFAULT 'TODO' NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
-
-CREATE INDEX "todos_list_id_created_at_idx" ON "todos" ("list_id", "created_at");
-```
-
----
-
-## 5. Development & Testing Commands
+## 4. Development & Testing Commands
 
 | Command | Action |
 |---|---|
 | `npm run dev` | Starts local Next.js development server at `http://localhost:3000` |
 | `npm run build` | Compiles optimized production build with Turbopack |
-| `npm test` | Runs the complete 79-test Vitest test suite |
-| `npx tsx --env-file=.env.local scripts/verify-phase2-live.ts` | Runs the automated live Supabase integration suite |
+| `npm test` | Runs the complete 95-test Vitest test suite |
+| `npx tsx --env-file=.env.local scripts/verify-phase3-live.ts` | Runs the automated live Supabase Phase 3 dual-view suite |
 | `npm run db:generate` | Generates new SQL migration files from Drizzle schemas |
 | `npm run db:migrate` | Applies pending migrations to PostgreSQL |
 | `npm run db:studio` | Opens interactive Drizzle Studio database viewer |
 
 ---
 
-## 6. Safe Deletion Policy
+## 5. Dual-View Features & UX Design
 
-When a user requests to delete a list:
-1. **Empty list (`taskCount === 0`)**: Deletes immediately.
-2. **List containing tasks (`taskCount > 0`) without confirmation (`force === false`)**: Rejected at the domain service layer with a `ValidationError`.
-3. **List containing tasks with confirmation (`force === true`)**: The UI displays a warning modal stating the exact task count and consequences. Upon explicit confirmation, the list and all cascaded tasks are permanently removed in a single atomic database operation.
+### A. Independent View Preference Persistence
+- Each list remembers its own view preference via `useListViewPreference` backed by browser `localStorage`.
+- When switching between lists (e.g. *College* in Board view and *Personal* in List view), each list automatically restores its saved view.
+- Safe SSR handling ensures zero hydration mismatch warnings on initial page load.
+
+### B. Accessible Status Transition Controls
+- Card controls provide instant status transitions without requiring fragile drag-and-drop gestures:
+  - From **To Do**: `→ In Progress`, `✓ Done`
+  - From **In Progress**: `← To Do`, `✓ Done`
+  - From **Done**: `↩ Reopen`, `← In Progress`
+- Status mutation failures keep the task in its current column, display an inline error alert, and provide a one-click `Retry` button.
+
+### C. Responsive Mobile Design
+- **Desktop ($\ge 768\text{px}$)**: 3-column side-by-side grid.
+- **Mobile ($< 768\text{px}$)**: Accessible tab bar (`[To Do (N)] [In Progress (N)] [Done (N)]`) allows comfortable single-column focus without cramped horizontal overflow.

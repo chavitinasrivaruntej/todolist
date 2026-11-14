@@ -5,6 +5,9 @@ import { trpc } from "@/lib/trpc/client";
 import { ListSidebar } from "@/components/lists/list-sidebar";
 import { TodoForm } from "@/components/todos/todo-form";
 import { TodoList } from "@/components/todos/todo-list";
+import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
+import { ViewSwitcher } from "@/components/todos/view-switcher";
+import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { Badge } from "@/components/ui/badge";
 import { ListTodo, CheckCircle2 } from "lucide-react";
 
@@ -12,6 +15,7 @@ export function TodoDashboard() {
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
 
   const { data: lists, isLoading } = trpc.todoList.list.useQuery();
+  const { viewMode, setViewMode } = useListViewPreference(selectedListId);
 
   // Automatically select first list when lists are loaded if none selected
   useEffect(() => {
@@ -41,13 +45,13 @@ export function TodoDashboard() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 2
+              Phase 3
             </Badge>
           </div>
-          <span className="text-xs text-neutral-400 font-mono">Personal Lists</span>
+          <span className="text-xs text-neutral-400 font-mono">Personal Lists & Kanban</span>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Organize your tasks into independent personal lists with lifecycle status tracking.
+          Organize your tasks into personal lists with dual List and Kanban Board views.
         </p>
       </header>
 
@@ -68,12 +72,32 @@ export function TodoDashboard() {
             </div>
           ) : activeList ? (
             <>
+              {/* Active List Heading & View Switcher */}
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-200/60 dark:border-neutral-800/60">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                    {activeList.name}
+                  </h2>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex-shrink-0">
+                    {activeList.taskCount} {activeList.taskCount === 1 ? "task" : "tasks"}
+                  </Badge>
+                </div>
+
+                <ViewSwitcher currentView={viewMode} onViewChange={setViewMode} />
+              </div>
+
+              {/* Task Creation Form (Always accessible in both List and Board views) */}
               <section aria-label={`Task creation for ${activeList.name}`}>
                 <TodoForm listId={activeList.id} listName={activeList.name} />
               </section>
 
-              <section aria-label={`Tasks in ${activeList.name}`}>
-                <TodoList listId={activeList.id} />
+              {/* View Content (List View vs Kanban Board View) */}
+              <section aria-label={`Tasks in ${activeList.name} (${viewMode} view)`}>
+                {viewMode === "list" ? (
+                  <TodoList listId={activeList.id} />
+                ) : (
+                  <KanbanBoard listId={activeList.id} />
+                )}
               </section>
             </>
           ) : (
