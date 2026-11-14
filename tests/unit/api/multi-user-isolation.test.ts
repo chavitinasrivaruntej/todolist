@@ -94,6 +94,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
               createdAt: new Date(),
               updatedAt: new Date(),
               taskCount: 1,
+              effectiveRole: "OWNER" as const,
             },
           ];
         }
@@ -105,6 +106,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
             createdAt: new Date(),
             updatedAt: new Date(),
             taskCount: 0,
+            effectiveRole: "OWNER" as const,
           },
         ];
       });

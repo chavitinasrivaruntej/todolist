@@ -21,6 +21,11 @@ vi.mock("@/lib/trpc/client", () => ({
         useMutation: vi.fn(),
       },
     },
+    sharing: {
+      leaveList: {
+        useMutation: vi.fn(),
+      },
+    },
   },
 }));
 
@@ -28,6 +33,7 @@ describe("ListSidebar Component", () => {
   const mockCreateMutate = vi.fn();
   const mockRenameMutate = vi.fn();
   const mockDeleteMutate = vi.fn();
+  const mockLeaveMutate = vi.fn();
   const mockInvalidate = vi.fn();
   const mockOnSelectList = vi.fn();
 
@@ -36,6 +42,7 @@ describe("ListSidebar Component", () => {
       id: "list-1",
       name: "Personal",
       taskCount: 0,
+      effectiveRole: "OWNER" as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -43,6 +50,7 @@ describe("ListSidebar Component", () => {
       id: "list-2",
       name: "Projects",
       taskCount: 3,
+      effectiveRole: "OWNER" as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -72,6 +80,11 @@ describe("ListSidebar Component", () => {
       mutate: mockDeleteMutate,
       isPending: false,
     } as unknown as ReturnType<typeof trpc.todoList.delete.useMutation>);
+
+    vi.mocked(trpc.sharing.leaveList.useMutation).mockReturnValue({
+      mutate: mockLeaveMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof trpc.sharing.leaveList.useMutation>);
   });
 
   it("should render lists with their names and task count badges", () => {
@@ -89,7 +102,7 @@ describe("ListSidebar Component", () => {
 
     expect(screen.getByText("Personal")).toBeInTheDocument();
     expect(screen.getByText("Projects")).toBeInTheDocument();
-    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getAllByText("0").length).toBeGreaterThan(0);
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 

@@ -8,9 +8,10 @@ import { CheckSquare, AlertCircle, RefreshCw } from "lucide-react";
 
 interface TodoListProps {
   listId: string;
+  isReadOnly?: boolean;
 }
 
-export function TodoList({ listId }: TodoListProps) {
+export function TodoList({ listId, isReadOnly = false }: TodoListProps) {
   const {
     data: todos,
     isLoading,
@@ -80,7 +81,12 @@ export function TodoList({ listId }: TodoListProps) {
       </div>
       <div className="space-y-2">
         {todos.map((todo) => (
-          <TodoItem key={todo.id} todo={todo} listId={listId} />
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            listId={listId}
+            isReadOnly={isReadOnly}
+          />
         ))}
       </div>
     </div>

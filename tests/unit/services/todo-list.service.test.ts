@@ -4,10 +4,14 @@ import {
   type ITodoListRepository,
   type TodoListWithTaskCount,
 } from "@/server/repositories/todo-list.repository";
+import { type IListMemberRepository } from "@/server/repositories/list-member.repository";
+import { ListPermissionService } from "@/server/services/list-permission.service";
 import { NotFoundError, ValidationError } from "@/server/errors";
 
 describe("TodoListService", () => {
   let mockRepository: ITodoListRepository;
+  let mockMemberRepository: IListMemberRepository;
+  let mockPermissionService: ListPermissionService;
   let service: TodoListService;
 
   const testUserId = "user-test-uuid";
@@ -19,18 +23,43 @@ describe("TodoListService", () => {
     createdAt: mockDate,
     updatedAt: mockDate,
     taskCount: 3,
+    effectiveRole: "OWNER",
   };
 
   beforeEach(() => {
     mockRepository = {
       findAllWithTaskCounts: vi.fn(),
+      findOwnedWithTaskCounts: vi.fn(),
+      findSharedWithTaskCounts: vi.fn(),
       findById: vi.fn(),
       create: vi.fn(),
       updateName: vi.fn(),
       delete: vi.fn(),
       countTasksByListId: vi.fn(),
     };
-    service = new TodoListService(mockRepository);
+
+    mockMemberRepository = {
+      findById: vi.fn(),
+      findByListAndUser: vi.fn(),
+      findAllByListId: vi.fn(),
+      addMember: vi.fn(),
+      updateRole: vi.fn(),
+      deleteMember: vi.fn(),
+      deleteByListAndUser: vi.fn(),
+    };
+
+    mockPermissionService = {
+      getUserRole: vi.fn().mockResolvedValue("OWNER"),
+      requireOwner: vi.fn().mockResolvedValue(undefined),
+      requireCanMutateTodos: vi.fn().mockResolvedValue("OWNER"),
+      requireCanReadList: vi.fn().mockResolvedValue("OWNER"),
+    } as unknown as ListPermissionService;
+
+    service = new TodoListService(
+      mockRepository,
+      mockMemberRepository,
+      mockPermissionService
+    );
   });
 
   describe("getLists", () => {
@@ -64,19 +93,42 @@ describe("TodoListService", () => {
         name: "Personal",
         userId: testUserId,
       });
-      expect(result).toEqual([{ ...defaultCreated, taskCount: 0 }]);
+      expect(result).toEqual([
+        {
+          ...defaultCreated,
+          taskCount: 0,
+          effectiveRole: "OWNER",
+        },
+      ]);
+    });
+  });
+
+  describe("getOwnedLists and getSharedLists", () => {
+    it("should query owned lists via repository", async () => {
+      vi.mocked(mockRepository.findOwnedWithTaskCounts).mockResolvedValue([sampleList]);
+      const res = await service.getOwnedLists(testUserId);
+      expect(mockRepository.findOwnedWithTaskCounts).toHaveBeenCalledWith(testUserId);
+      expect(res).toEqual([sampleList]);
+    });
+
+    it("should query shared lists via repository", async () => {
+      vi.mocked(mockRepository.findSharedWithTaskCounts).mockResolvedValue([]);
+      const res = await service.getSharedLists(testUserId);
+      expect(mockRepository.findSharedWithTaskCounts).toHaveBeenCalledWith(testUserId);
+      expect(res).toEqual([]);
     });
   });
 
   describe("createList", () => {
-    it("should create list with trimmed name scoped to user", async () => {
-      vi.mocked(mockRepository.create).mockResolvedValue({
-        id: sampleList.id,
+    it("should create a new list with trimmed name", async () => {
+      const createdList = {
+        id: "33333333-3333-3333-3333-333333333333",
         userId: testUserId,
         name: "College",
         createdAt: mockDate,
         updatedAt: mockDate,
-      });
+      };
+      vi.mocked(mockRepository.create).mockResolvedValue(createdList);
 
       const result = await service.createList(
         { name: "  College  " },
@@ -99,8 +151,7 @@ describe("TodoListService", () => {
   });
 
   describe("renameList", () => {
-    it("should rename an existing list scoped to user", async () => {
-      vi.mocked(mockRepository.findById).mockResolvedValue(sampleList);
+    it("should rename an existing list scoped to owner", async () => {
       vi.mocked(mockRepository.updateName).mockResolvedValue({
         ...sampleList,
         name: "Work Projects",
@@ -114,14 +165,13 @@ describe("TodoListService", () => {
         testUserId
       );
 
-      expect(mockRepository.findById).toHaveBeenCalledWith(
-        sampleList.id,
-        testUserId
+      expect(mockPermissionService.requireOwner).toHaveBeenCalledWith(
+        testUserId,
+        sampleList.id
       );
       expect(mockRepository.updateName).toHaveBeenCalledWith(
         sampleList.id,
-        "Work Projects",
-        testUserId
+        "Work Projects"
       );
       expect(result.name).toBe("Work Projects");
     });
@@ -132,8 +182,8 @@ describe("TodoListService", () => {
       ).rejects.toThrow(ValidationError);
     });
 
-    it("should throw NotFoundError if list does not exist for this user", async () => {
-      vi.mocked(mockRepository.findById).mockResolvedValue(null);
+    it("should throw NotFoundError if list is not found on update", async () => {
+      vi.mocked(mockRepository.updateName).mockResolvedValue(null);
 
       await expect(
         service.renameList(
@@ -145,7 +195,7 @@ describe("TodoListService", () => {
   });
 
   describe("deleteList", () => {
-    it("should throw NotFoundError if list does not exist for this user", async () => {
+    it("should throw NotFoundError if list does not exist", async () => {
       vi.mocked(mockRepository.findById).mockResolvedValue(null);
 
       await expect(
@@ -174,10 +224,11 @@ describe("TodoListService", () => {
         testUserId
       );
 
-      expect(mockRepository.delete).toHaveBeenCalledWith(
-        sampleList.id,
-        testUserId
+      expect(mockPermissionService.requireOwner).toHaveBeenCalledWith(
+        testUserId,
+        sampleList.id
       );
+      expect(mockRepository.delete).toHaveBeenCalledWith(sampleList.id);
       expect(result).toEqual({ success: true, id: sampleList.id });
     });
 
@@ -191,11 +242,34 @@ describe("TodoListService", () => {
         testUserId
       );
 
-      expect(mockRepository.delete).toHaveBeenCalledWith(
+      expect(mockPermissionService.requireOwner).toHaveBeenCalledWith(
+        testUserId,
+        sampleList.id
+      );
+      expect(mockRepository.delete).toHaveBeenCalledWith(sampleList.id);
+      expect(result).toEqual({ success: true, id: sampleList.id });
+    });
+  });
+
+  describe("leaveList", () => {
+    it("should prevent list owner from leaving their own list", async () => {
+      vi.mocked(mockPermissionService.getUserRole).mockResolvedValue("OWNER");
+
+      await expect(
+        service.leaveList({ listId: sampleList.id }, testUserId)
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("should allow collaborator to leave list", async () => {
+      vi.mocked(mockPermissionService.getUserRole).mockResolvedValue("EDITOR");
+      vi.mocked(mockMemberRepository.deleteByListAndUser).mockResolvedValue(true);
+
+      const res = await service.leaveList({ listId: sampleList.id }, testUserId);
+      expect(res).toEqual({ success: true, listId: sampleList.id });
+      expect(mockMemberRepository.deleteByListAndUser).toHaveBeenCalledWith(
         sampleList.id,
         testUserId
       );
-      expect(result).toEqual({ success: true, id: sampleList.id });
     });
   });
 });

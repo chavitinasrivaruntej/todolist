@@ -53,7 +53,7 @@ describe("TodoListRepository", () => {
       } as unknown as Database;
 
       const repo = new TodoListRepository(mockDb);
-      const result = await repo.updateName("list-1", "College Work", testUserId);
+      const result = await repo.updateName("list-1", "College Work");
 
       expect(mockUpdate).toHaveBeenCalledWith(todoLists);
       expect(result).toEqual(updatedRecord);
@@ -71,7 +71,7 @@ describe("TodoListRepository", () => {
       } as unknown as Database;
 
       const repo = new TodoListRepository(mockDb);
-      const result = await repo.delete("list-1", testUserId);
+      const result = await repo.delete("list-1");
 
       expect(mockDelete).toHaveBeenCalledWith(todoLists);
       expect(result).toBe(true);
@@ -87,7 +87,7 @@ describe("TodoListRepository", () => {
       } as unknown as Database;
 
       const repo = new TodoListRepository(mockDb);
-      const result = await repo.delete("missing-id", testUserId);
+      const result = await repo.delete("missing-id");
 
       expect(result).toBe(false);
     });

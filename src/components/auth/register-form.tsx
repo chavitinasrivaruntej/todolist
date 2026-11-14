@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { registerSchema } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Loader2, UserPlus, AlertCircle, CheckCircle } from "lucide-react";
 
-export function RegisterForm() {
+function RegisterFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawRedirect = searchParams.get("redirect");
+  const redirectUrl =
+    rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : "/";
+
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -60,8 +67,8 @@ export function RegisterForm() {
         return;
       }
 
-      // If user session is active, redirect to home dashboard
-      router.push("/");
+      // If user session is active, redirect to destination
+      router.push(redirectUrl);
       router.refresh();
     } catch (err: unknown) {
       setErrorMessage(
@@ -77,10 +84,15 @@ export function RegisterForm() {
 
     try {
       const supabase = createClient();
+      const callbackUrl =
+        redirectUrl !== "/"
+          ? `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(redirectUrl)}`
+          : `${window.location.origin}/api/auth/callback`;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback`,
+          redirectTo: callbackUrl,
         },
       });
 
@@ -247,7 +259,11 @@ export function RegisterForm() {
           <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
             Already have an account?{" "}
             <Link
-              href="/login"
+              href={
+                redirectUrl !== "/"
+                  ? `/login?redirect=${encodeURIComponent(redirectUrl)}`
+                  : "/login"
+              }
               className="font-medium text-neutral-900 underline-offset-4 hover:underline dark:text-neutral-50"
             >
               Sign In
@@ -256,5 +272,19 @@ export function RegisterForm() {
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+export function RegisterForm() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex justify-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+        </div>
+      }
+    >
+      <RegisterFormInner />
+    </React.Suspense>
   );
 }

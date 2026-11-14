@@ -12,9 +12,16 @@ interface KanbanColumnProps {
   title: string;
   todos: TodoListItem[];
   listId: string;
+  isReadOnly?: boolean;
 }
 
-export function KanbanColumn({ status, title, todos, listId }: KanbanColumnProps) {
+export function KanbanColumn({
+  status,
+  title,
+  todos,
+  listId,
+  isReadOnly = false,
+}: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: status,
     data: { status },
@@ -86,7 +93,12 @@ export function KanbanColumn({ status, title, todos, listId }: KanbanColumnProps
           </div>
         ) : (
           todos.map((todo) => (
-            <KanbanCard key={todo.id} todo={todo} listId={listId} />
+            <KanbanCard
+              key={todo.id}
+              todo={todo}
+              listId={listId}
+              isReadOnly={isReadOnly}
+            />
           ))
         )}
       </div>

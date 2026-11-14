@@ -2,21 +2,27 @@ import { eq, and, asc, count } from "drizzle-orm";
 import { db as defaultDb, type Database } from "@/db";
 import { todoLists, type TodoList } from "@/db/schema/lists";
 import { todos } from "@/db/schema/todos";
+import { listMembers } from "@/db/schema/members";
 
-export type TodoListWithTaskCount = TodoList & { taskCount: number };
+export type TodoListWithTaskCount = TodoList & {
+  taskCount: number;
+  effectiveRole: "OWNER" | "EDITOR" | "VIEWER";
+  ownerEmail?: string | null;
+};
 
 export interface ITodoListRepository {
   findAllWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
+  findOwnedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
+  findSharedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
   findById(id: string, userId?: string): Promise<TodoList | null>;
   create(data: { name: string; userId: string }): Promise<TodoList>;
-  updateName(id: string, name: string, userId: string): Promise<TodoList | null>;
-  delete(id: string, userId: string): Promise<boolean>;
+  updateName(id: string, name: string): Promise<TodoList | null>;
+  delete(id: string): Promise<boolean>;
   countTasksByListId(id: string): Promise<number>;
 }
 
 /**
- * TodoListRepository handles all database interactions for the 'todo_lists' table.
- * All operations enforce strict multi-tenant tenant isolation via user ownership (userId).
+ * TodoListRepository handles database operations for 'todo_lists' and multi-tenant list aggregation.
  */
 export class TodoListRepository implements ITodoListRepository {
   private readonly db: Database;
@@ -25,7 +31,7 @@ export class TodoListRepository implements ITodoListRepository {
     this.db = database;
   }
 
-  async findAllWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]> {
+  async findOwnedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]> {
     const rows = await this.db
       .select({
         id: todoLists.id,
@@ -44,7 +50,46 @@ export class TodoListRepository implements ITodoListRepository {
     return rows.map((r) => ({
       ...r,
       taskCount: Number(r.taskCount),
+      effectiveRole: "OWNER",
     }));
+  }
+
+  async findSharedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]> {
+    const rows = await this.db
+      .select({
+        id: todoLists.id,
+        userId: todoLists.userId,
+        name: todoLists.name,
+        createdAt: todoLists.createdAt,
+        updatedAt: todoLists.updatedAt,
+        taskCount: count(todos.id),
+        role: listMembers.role,
+      })
+      .from(listMembers)
+      .innerJoin(todoLists, eq(todoLists.id, listMembers.listId))
+      .leftJoin(todos, eq(todos.listId, todoLists.id))
+      .where(eq(listMembers.userId, userId))
+      .groupBy(todoLists.id, listMembers.role)
+      .orderBy(asc(listMembers.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      name: r.name,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      taskCount: Number(r.taskCount),
+      effectiveRole: r.role as "EDITOR" | "VIEWER",
+    }));
+  }
+
+  async findAllWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]> {
+    const [owned, shared] = await Promise.all([
+      this.findOwnedWithTaskCounts(userId),
+      this.findSharedWithTaskCounts(userId),
+    ]);
+
+    return [...owned, ...shared];
   }
 
   async findById(id: string, userId?: string): Promise<TodoList | null> {
@@ -78,23 +123,23 @@ export class TodoListRepository implements ITodoListRepository {
     return created;
   }
 
-  async updateName(id: string, name: string, userId: string): Promise<TodoList | null> {
+  async updateName(id: string, name: string): Promise<TodoList | null> {
     const [updated] = await this.db
       .update(todoLists)
       .set({
         name,
         updatedAt: new Date(),
       })
-      .where(and(eq(todoLists.id, id), eq(todoLists.userId, userId)))
+      .where(eq(todoLists.id, id))
       .returning();
 
     return updated ?? null;
   }
 
-  async delete(id: string, userId: string): Promise<boolean> {
+  async delete(id: string): Promise<boolean> {
     const deleted = await this.db
       .delete(todoLists)
-      .where(and(eq(todoLists.id, id), eq(todoLists.userId, userId)))
+      .where(eq(todoLists.id, id))
       .returning({ id: todoLists.id });
 
     return deleted.length > 0;

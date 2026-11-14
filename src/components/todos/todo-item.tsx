@@ -14,9 +14,10 @@ export type TodoListItem = RouterOutput["todo"]["list"][number];
 interface TodoItemProps {
   todo: TodoListItem;
   listId: string;
+  isReadOnly?: boolean;
 }
 
-export function TodoItem({ todo, listId }: TodoItemProps) {
+export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const utils = trpc.useUtils();
@@ -95,22 +96,44 @@ export function TodoItem({ todo, listId }: TodoItemProps) {
               {todo.title}
             </h4>
 
-            {/* Status Selector Dropdown */}
-            <div className="relative inline-block">
-              <select
-                value={todo.status}
-                onChange={(e) => handleStatusChange(e.target.value as TodoStatusType)}
-                disabled={updateStatusMutation.isPending}
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded border cursor-pointer focus:outline-none transition-colors ${getStatusBadgeStyle(todo.status)}`}
-                aria-label={`Change status for ${todo.title}`}
+            {/* Status Indicator / Dropdown */}
+            {isReadOnly ? (
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${getStatusBadgeStyle(
+                  todo.status
+                )}`}
               >
-                {TODO_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s === "IN_PROGRESS" ? "In Progress" : s === "TODO" ? "To Do" : "Done"}
-                  </option>
-                ))}
-              </select>
-            </div>
+                {todo.status === "IN_PROGRESS"
+                  ? "In Progress"
+                  : todo.status === "TODO"
+                  ? "To Do"
+                  : "Done"}
+              </span>
+            ) : (
+              <div className="relative inline-block">
+                <select
+                  value={todo.status}
+                  onChange={(e) =>
+                    handleStatusChange(e.target.value as TodoStatusType)
+                  }
+                  disabled={updateStatusMutation.isPending}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border cursor-pointer focus:outline-none transition-colors ${getStatusBadgeStyle(
+                    todo.status
+                  )}`}
+                  aria-label={`Change status for ${todo.title}`}
+                >
+                  {TODO_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s === "IN_PROGRESS"
+                        ? "In Progress"
+                        : s === "TODO"
+                        ? "To Do"
+                        : "Done"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {todo.description && (
@@ -127,23 +150,25 @@ export function TodoItem({ todo, listId }: TodoItemProps) {
           </div>
         </div>
 
-        <div className="flex-shrink-0 pt-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="h-7 w-7 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
-            title="Delete todo"
-            aria-label={`Delete todo: ${todo.title}`}
-          >
-            {deleteMutation.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+        {!isReadOnly && (
+          <div className="flex-shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              className="h-7 w-7 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
+              title="Delete todo"
+              aria-label={`Delete todo: ${todo.title}`}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {statusError && (

@@ -29,6 +29,13 @@
       "when": 1794680000000,
       "tag": "0003_add_user_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794685000000,
+      "tag": "0004_list_sharing_and_collaboration",
+      "breakpoints": true
     }
   ]
 }

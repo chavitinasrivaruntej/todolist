@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { ListSidebar } from "@/components/lists/list-sidebar";
 import { TodoForm } from "@/components/todos/todo-form";
@@ -9,19 +10,31 @@ import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
 import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { UserMenu } from "@/components/auth/user-menu";
+import { ShareListDialog } from "@/components/sharing/share-list-dialog";
 import { Badge } from "@/components/ui/badge";
-import { ListTodo, CheckCircle2 } from "lucide-react";
+import {
+  ListTodo,
+  CheckCircle2,
+  Shield,
+  Eye,
+  Crown,
+  Loader2,
+} from "lucide-react";
 
-export function TodoDashboard() {
-  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+function TodoDashboardInner() {
+  const searchParams = useSearchParams();
+  const urlListId = searchParams.get("listId");
+  const [selectedListId, setSelectedListId] = useState<string | null>(urlListId);
 
   const { data: lists, isLoading } = trpc.todoList.list.useQuery();
   const { viewMode, setViewMode } = useListViewPreference(selectedListId);
 
-  // Automatically select first list when lists are loaded if none selected
+  // Automatically select first list or urlListId when lists are loaded
   useEffect(() => {
     if (lists && lists.length > 0) {
-      if (!selectedListId || !lists.some((l) => l.id === selectedListId)) {
+      if (urlListId && lists.some((l) => l.id === urlListId)) {
+        setSelectedListId(urlListId);
+      } else if (!selectedListId || !lists.some((l) => l.id === selectedListId)) {
         if (lists[0]) {
           setSelectedListId(lists[0].id);
         }
@@ -29,9 +42,13 @@ export function TodoDashboard() {
     } else if (lists && lists.length === 0) {
       setSelectedListId(null);
     }
-  }, [lists, selectedListId]);
+  }, [lists, selectedListId, urlListId]);
 
   const activeList = lists?.find((l) => l.id === selectedListId);
+  const effectiveRole = activeList?.effectiveRole ?? "OWNER";
+  const isOwner = effectiveRole === "OWNER";
+  const isReadOnly = effectiveRole === "VIEWER";
+  const isEditor = effectiveRole === "EDITOR";
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -46,13 +63,13 @@ export function TodoDashboard() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 4
+              Phase 5: Collaborative
             </Badge>
           </div>
           <UserMenu />
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Personal authenticated workspaces with dual List and Kanban Board views.
+          Workspaces with list sharing, role-based collaboration, and dual List/Kanban views.
         </p>
       </header>
 
@@ -74,30 +91,82 @@ export function TodoDashboard() {
           ) : activeList ? (
             <>
               {/* Active List Heading & View Switcher */}
-              <div className="flex items-center justify-between pb-2 border-b border-neutral-200/60 dark:border-neutral-800/60">
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-200/60 dark:border-neutral-800/60 gap-2 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
                   <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                     {activeList.name}
                   </h2>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex-shrink-0">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                     {activeList.taskCount} {activeList.taskCount === 1 ? "task" : "tasks"}
                   </Badge>
+
+                  {/* Role Badge */}
+                  {isOwner ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-800 shrink-0 gap-1"
+                    >
+                      <Crown className="h-2.5 w-2.5" />
+                      Owner
+                    </Badge>
+                  ) : isEditor ? (
+                    <Badge variant="default" className="text-[10px] px-1.5 py-0 shrink-0 gap-1">
+                      <Shield className="h-2.5 w-2.5" />
+                      Editor
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0 gap-1">
+                      <Eye className="h-2.5 w-2.5" />
+                      Viewer
+                    </Badge>
+                  )}
                 </div>
 
-                <ViewSwitcher currentView={viewMode} onViewChange={setViewMode} />
+                <div className="flex items-center gap-2 ml-auto">
+                  {/* Share button only available for OWNER */}
+                  {isOwner && (
+                    <ShareListDialog
+                      listId={activeList.id}
+                      listName={activeList.name}
+                    />
+                  )}
+
+                  <ViewSwitcher currentView={viewMode} onViewChange={setViewMode} />
+                </div>
               </div>
 
-              {/* Task Creation Form (Always accessible in both List and Board views) */}
-              <section aria-label={`Task creation for ${activeList.name}`}>
-                <TodoForm listId={activeList.id} listName={activeList.name} />
-              </section>
+              {/* Role Context Banners */}
+              {isReadOnly && (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 text-xs border border-neutral-200 dark:border-neutral-800">
+                  <Eye className="h-4 w-4 shrink-0 text-neutral-500 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Read-Only View:</span> You have view-only access to this shared list. Only the list owner and editors can add, edit, move, or delete tasks.
+                  </div>
+                </div>
+              )}
+
+              {isEditor && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 text-xs border border-blue-200 dark:border-blue-900">
+                  <Shield className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                  <span>
+                    <strong>Editor Access:</strong> You can add, edit, move, and complete tasks in this shared list.
+                  </span>
+                </div>
+              )}
+
+              {/* Task Creation Form (Hidden for Viewers) */}
+              {!isReadOnly && (
+                <section aria-label={`Task creation for ${activeList.name}`}>
+                  <TodoForm listId={activeList.id} listName={activeList.name} />
+                </section>
+              )}
 
               {/* View Content (List View vs Kanban Board View) */}
               <section aria-label={`Tasks in ${activeList.name} (${viewMode} view)`}>
                 {viewMode === "list" ? (
-                  <TodoList listId={activeList.id} />
+                  <TodoList listId={activeList.id} isReadOnly={isReadOnly} />
                 ) : (
-                  <KanbanBoard listId={activeList.id} />
+                  <KanbanBoard listId={activeList.id} isReadOnly={isReadOnly} />
                 )}
               </section>
             </>
@@ -117,5 +186,19 @@ export function TodoDashboard() {
         </main>
       </div>
     </div>
+  );
+}
+
+export function TodoDashboard() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex justify-center p-12">
+          <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+        </div>
+      }
+    >
+      <TodoDashboardInner />
+    </React.Suspense>
   );
 }

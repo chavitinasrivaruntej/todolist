@@ -3,9 +3,9 @@ import {
   todoRepository as defaultRepository,
 } from "@/server/repositories/todo.repository";
 import {
-  type ITodoListRepository,
-  todoListRepository as defaultListRepository,
-} from "@/server/repositories/todo-list.repository";
+  ListPermissionService,
+  listPermissionService as defaultPermissionService,
+} from "@/server/services/list-permission.service";
 import {
   type DeleteTodoInput,
   type GetTodosByListInput,
@@ -23,40 +23,35 @@ export interface CreateTodoServiceInput {
 
 /**
  * TodoService encapsulates domain rules and business logic for Todo operations.
- * Completely decoupled from API transport (tRPC) and database implementations.
- * Enforces user ownership verification across all read, write, and delete operations.
+ * Enforces role-based permissions (OWNER, EDITOR, VIEWER) on all task operations.
  */
 export class TodoService {
   private readonly repository: ITodoRepository;
-  private readonly listRepository: ITodoListRepository;
+  private readonly permissionService: ListPermissionService;
 
   constructor(
     repository: ITodoRepository = defaultRepository,
-    listRepository: ITodoListRepository = defaultListRepository
+    permissionService: ListPermissionService = defaultPermissionService
   ) {
     this.repository = repository;
-    this.listRepository = listRepository;
+    this.permissionService = permissionService;
   }
 
   /**
-   * Retrieves all todo items belonging to a specific list owned by the user.
+   * Retrieves all todo items belonging to a specific list.
+   * Allowed for OWNER, EDITOR, and VIEWER roles.
    */
   async getTodosByList(
     input: GetTodosByListInput,
     userId: string
   ): Promise<Todo[]> {
-    const listExists = await this.listRepository.findById(input.listId, userId);
-    if (!listExists) {
-      throw new NotFoundError(
-        `Todo list with ID ${input.listId} was not found.`
-      );
-    }
-
+    await this.permissionService.requireCanReadList(userId, input.listId);
     return this.repository.findAllByListId(input.listId);
   }
 
   /**
-   * Creates a new todo item within a list owned by the user.
+   * Creates a new todo item within a list.
+   * Allowed for OWNER and EDITOR roles. Blocked for VIEWER roles.
    */
   async createTodo(
     input: CreateTodoServiceInput,
@@ -69,12 +64,7 @@ export class TodoService {
       );
     }
 
-    const listExists = await this.listRepository.findById(input.listId, userId);
-    if (!listExists) {
-      throw new NotFoundError(
-        `Cannot create todo: Todo list with ID ${input.listId} does not exist.`
-      );
-    }
+    await this.permissionService.requireCanMutateTodos(userId, input.listId);
 
     return this.repository.create({
       listId: input.listId,
@@ -85,17 +75,21 @@ export class TodoService {
   }
 
   /**
-   * Updates the status of an existing Todo item belonging to a list owned by the user.
+   * Updates the status of an existing Todo item.
+   * Allowed for OWNER and EDITOR roles. Blocked for VIEWER roles.
    */
   async updateStatus(
     input: UpdateTodoStatusInput,
     userId: string
   ): Promise<Todo> {
-    const updated = await this.repository.updateStatus(
-      input.id,
-      input.status,
-      userId
-    );
+    const listId = await this.repository.findListIdByTodoId(input.id);
+    if (!listId) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
+    await this.permissionService.requireCanMutateTodos(userId, listId);
+
+    const updated = await this.repository.updateStatus(input.id, input.status);
     if (!updated) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
     }
@@ -104,13 +98,21 @@ export class TodoService {
   }
 
   /**
-   * Deletes a todo item by ID in a single atomic database operation scoped to the user's lists.
+   * Deletes a todo item by ID.
+   * Allowed for OWNER and EDITOR roles. Blocked for VIEWER roles.
    */
   async deleteTodo(
     input: DeleteTodoInput,
     userId: string
   ): Promise<{ success: boolean; id: string }> {
-    const deleted = await this.repository.delete(input.id, userId);
+    const listId = await this.repository.findListIdByTodoId(input.id);
+    if (!listId) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
+    await this.permissionService.requireCanMutateTodos(userId, listId);
+
+    const deleted = await this.repository.delete(input.id);
     if (!deleted) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
     }

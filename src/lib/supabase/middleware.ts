@@ -40,15 +40,25 @@ export async function updateSession(request: NextRequest) {
   const url = request.nextUrl.clone();
   const isAuthPage =
     url.pathname.startsWith("/login") || url.pathname.startsWith("/register");
+  const isPublicPage = isAuthPage || url.pathname.startsWith("/invite");
 
   // If user is unauthenticated and attempting to access an application route, redirect to /login
-  if (!user && !isAuthPage) {
+  if (!user && !isPublicPage) {
     url.pathname = "/login";
+    url.searchParams.set("redirect", request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
-  // If user is authenticated and navigating to login/register, redirect to /
+  // If user is authenticated and navigating to login/register, redirect to destination or /
   if (user && isAuthPage) {
+    const redirectParam = request.nextUrl.searchParams.get("redirect");
+    if (
+      redirectParam &&
+      redirectParam.startsWith("/") &&
+      !redirectParam.startsWith("//")
+    ) {
+      return NextResponse.redirect(new URL(redirectParam, request.url));
+    }
     url.pathname = "/";
     return NextResponse.redirect(url);
   }

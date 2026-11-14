@@ -22,9 +22,10 @@ import { AlertCircle, RefreshCw, CheckSquare } from "lucide-react";
 
 interface KanbanBoardProps {
   listId: string;
+  isReadOnly?: boolean;
 }
 
-export function KanbanBoard({ listId }: KanbanBoardProps) {
+export function KanbanBoard({ listId, isReadOnly = false }: KanbanBoardProps) {
   const [mobileTab, setMobileTab] = useState<TodoStatusType>("TODO");
   const [activeTodo, setActiveTodo] = useState<TodoListItem | null>(null);
 
@@ -232,6 +233,7 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
               title="To Do"
               todos={columns.TODO}
               listId={listId}
+              isReadOnly={isReadOnly}
             />
           </div>
 
@@ -241,6 +243,7 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
               title="In Progress"
               todos={columns.IN_PROGRESS}
               listId={listId}
+              isReadOnly={isReadOnly}
             />
           </div>
 
@@ -250,6 +253,7 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
               title="Done"
               todos={columns.DONE}
               listId={listId}
+              isReadOnly={isReadOnly}
             />
           </div>
         </div>
