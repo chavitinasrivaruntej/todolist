@@ -1,12 +1,20 @@
 import { z } from "zod";
 
+export const TODO_STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
+export type TodoStatusType = (typeof TODO_STATUSES)[number];
+
 /**
- * Validation schema for creating a new Todo item.
- * Enforces non-empty trimmed titles and reasonable character limits.
- * Description accepts a normal string, empty string, null, or omitted (undefined),
- * and normalizes empty/null inputs to undefined.
+ * Validation schema for retrieving todos belonging to a specific list.
+ */
+export const getTodosByListSchema = z.object({
+  listId: z.string().uuid("Invalid list ID format"),
+});
+
+/**
+ * Validation schema for creating a new Todo item within a specific list.
  */
 export const createTodoSchema = z.object({
+  listId: z.string().uuid("Invalid list ID format"),
   title: z
     .string()
     .trim()
@@ -18,15 +26,25 @@ export const createTodoSchema = z.object({
     .max(1000, "Description cannot exceed 1000 characters")
     .nullish()
     .transform((val) => (val === "" || val === null || val === undefined ? undefined : val)),
+  status: z.enum(TODO_STATUSES).optional().default("TODO"),
+});
+
+/**
+ * Validation schema for updating a Todo's status.
+ */
+export const updateTodoStatusSchema = z.object({
+  id: z.string().uuid("Invalid todo ID format"),
+  status: z.enum(TODO_STATUSES),
 });
 
 /**
  * Validation schema for deleting a Todo item.
- * Enforces valid UUID format.
  */
 export const deleteTodoSchema = z.object({
   id: z.string().uuid("Invalid todo ID format"),
 });
 
+export type GetTodosByListInput = z.infer<typeof getTodosByListSchema>;
 export type CreateTodoInput = z.infer<typeof createTodoSchema>;
+export type UpdateTodoStatusInput = z.infer<typeof updateTodoStatusSchema>;
 export type DeleteTodoInput = z.infer<typeof deleteTodoSchema>;

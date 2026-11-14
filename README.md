@@ -1,19 +1,19 @@
-# Caize Todo Application — Phase 1: Project Foundation & Architecture
+# Caize Todo Application — Multi-List Personal Task Manager (Phase 2)
 
-A minimalist, production-ready Todo application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, and clean software engineering principles.
-
-This repository serves as Phase 1 of the Caize take-home engineering assignment, establishing the foundational architecture, database modeling, API layer, UI shell, and test harness.
+A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, and real-world database persistence with Supabase PostgreSQL.
 
 ---
 
-## 1. Project Overview
+## 1. Project Overview & Evolution
 
-The objective of this phase is to establish an extensible, rock-solid engineering foundation for a productivity task manager. Rather than premature complexity or visual bloat, the application prioritizes:
+Evolved from a single-list prototype into a **multiple-list personal Todo manager**. Users can create, rename, and delete custom task lists (e.g., *College*, *Personal*, *Projects*, *Habits*), organize tasks with three-state status tracking (`TODO`, `IN_PROGRESS`, `DONE`), and delete lists safely with protected cascade deletion policies.
 
-- **Separation of Concerns**: Isolated Presentation, API, Business Logic, Data Access, Validation, and Database layers.
-- **Strict End-to-End Type Safety**: TypeScript strict mode paired with tRPC router output inference and Zod validation schemas.
-- **Maintainable Database Layer**: Drizzle ORM migrations with PostgreSQL hosted on Supabase.
-- **Tested Core Domain**: Vitest test suite verifying domain validations, service operations, and repository boundaries.
+### Core Architectural Pillars
+- **Strict Layer Separation**: Presentation, API Transport, Domain Services, Data Access (Repositories), Validations, and Database Schema remain strictly decoupled.
+- **Relational Integrity**: Foreign key enforcement (`todos.list_id` → `todo_lists.id`) with PostgreSQL cascade deletes and compound index `(list_id, created_at)`.
+- **Domain-Driven Error Handling**: Domain services throw lightweight, framework-agnostic errors (`NotFoundError`, `ValidationError`) mapped centrally to standard `TRPCError` codes at the network boundary.
+- **Automated Test Suite**: 79 automated tests across Vitest covering validations, services, repositories, tRPC caller pipelines, and interactive UI components.
+- **Live Supabase PostgreSQL Verification**: Verified live with transaction pooler runtime and session pooler migrations.
 
 ---
 
@@ -21,196 +21,111 @@ The objective of this phase is to establish an extensible, rock-solid engineerin
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Framework** | [Next.js](https://nextjs.org/) (App Router) | React full-stack framework with React Server Components & Edge/Node routing |
-| **Language** | [TypeScript](https://www.typescriptlang.org/) | Strict mode enabled, zero `any` usage |
+| **Framework** | [Next.js](https://nextjs.org/) (App Router, Turbopack) | React full-stack framework with React Server Components & Edge/Node routing |
+| **Language** | [TypeScript](https://www.typescriptlang.org/) | Strict mode enabled, zero `any` usage, end-to-end type inference |
 | **API Transport** | [tRPC v11](https://trpc.io/) | Type-safe RPC with automatic client inference and zero code-generation |
 | **Database ORM** | [Drizzle ORM](https://orm.drizzle.team/) | Lightweight, type-safe SQL query builder and schema management |
 | **Database** | [PostgreSQL (Supabase)](https://supabase.com/) | Real relational database with transaction connection pooling |
-| **Validation** | [Zod](https://zod.dev/) | Single-source-of-truth schemas for client and server validation |
-| **Styling & UI** | [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Accessible, minimalist design system with neutral palette |
-| **Testing** | [Vitest](https://vitest.dev/) | High-performance unit and integration test runner with JSDOM |
+| **Validation** | [Zod](https://zod.dev/) | Single source of truth for client and server input schemas |
+| **Styling & UI** | [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Accessible, responsive, minimalist design with neutral palette |
+| **Testing** | [Vitest](https://vitest.dev/) + React Testing Library | Unit, service, repository, tRPC caller, and component testing |
 
 ---
 
 ## 3. Architecture & Layer Responsibilities
 
-The codebase follows a modular monolith design pattern with strict one-way dependencies:
-
 ```
-[Presentation Layer] (React Components & Hooks)
+[Presentation Layer] (ListSidebar, TodoDashboard, TodoForm, TodoItem, TodoList)
          │
          ▼
-[API Layer] (tRPC Routers & Procedures)
+[API Layer] (tRPC Routers: todoList, todo)
          │
          ▼
-[Business Logic Layer] (Application Services)
+[Domain Services] (TodoListService, TodoService)
          │
          ▼
-[Data Access Layer] (Repositories)
+[Data Access Repositories] (TodoListRepository, TodoRepository)
          │
          ▼
-[Database Layer] (Drizzle ORM & PostgreSQL)
+[Database Layer] (Drizzle ORM + Supabase PostgreSQL)
 ```
 
 ### Layer Breakdown
 
-1. **Presentation Layer (`src/components/`, `src/app/`)**
-   - React components partitioned into UI primitives (`src/components/ui/`) and feature-specific components (`src/components/todos/`).
-   - Uses `trpc.useUtils()` and `useMutation`/`useQuery` hooks for reactive data fetching and automatic cache invalidation.
-   - **Rule**: Contains no business logic or database queries; handles presentation, loading states, error fallbacks, and user feedback only.
+1. **Presentation Layer (`src/components/`)**
+   - **`ListSidebar`**: Sidebar navigation displaying all lists, task count badges, inline list creation, inline renaming, and safe deletion confirmation dialogs.
+   - **`TodoDashboard`**: Responsive two-column dashboard coordinating list selection and task view.
+   - **`TodoForm`**: Task creation with title, optional description, and initial status selector (`TODO`, `IN_PROGRESS`, `DONE`).
+   - **`TodoItem`**: Individual task card with interactive status dropdown (color badges, strikethrough for completed tasks), creation timestamp, inline delete confirmation, and retry feedback.
+   - **`TodoList`**: Task listing for the selected list with loading skeleton, error fallback, and empty states.
 
 2. **API Layer (`src/server/api/`)**
-   - `root.ts`: Root `AppRouter` combining domain-specific sub-routers.
-   - `trpc.ts`: tRPC procedure builders, context setup, and structured error formatters (mapping Zod issues to client-safe payloads).
-   - `routers/todo.router.ts`: Exposes `list`, `create`, and `delete` procedures. Validates inputs with Zod and forwards execution to the service layer.
-   - **Rule**: Acts strictly as a network adapter and transport boundary. Does not execute raw SQL queries.
+   - **`list.router.ts`**: Procedures `todoList.list`, `todoList.create`, `todoList.rename`, `todoList.delete`.
+   - **`todo.router.ts`**: Procedures `todo.list`, `todo.create`, `todo.updateStatus`, `todo.delete`.
+   - **`trpc.ts`**: Centralized error middleware translating application errors (`NotFoundError` → `NOT_FOUND`, `ValidationError` → `BAD_REQUEST`, `DatabaseConfigurationError` → `INTERNAL_SERVER_ERROR`).
 
 3. **Business Logic Layer (`src/server/services/`)**
-   - `todo.service.ts`: Enforces business rules (title normalization, trimming, presence validation, existence checks before deletion).
-   - Throws standardized `TRPCError` exceptions with appropriate HTTP/RPC status codes (`BAD_REQUEST`, `NOT_FOUND`, `INTERNAL_SERVER_ERROR`).
-   - **Rule**: Pure domain logic. Independent of HTTP request formats or database implementation details.
+   - **`todo-list.service.ts`**: Enforces business rules for lists: trimmed non-empty names, safe deletion policy (rejects list deletion if tasks > 0 unless `force: true`).
+   - **`todo.service.ts`**: Enforces task creation rules: non-empty trimmed titles, list existence verification, default `TODO` status, single atomic deletion.
 
 4. **Data Access Layer (`src/server/repositories/`)**
-   - `todo.repository.ts`: Encapsulates all SQL queries using Drizzle ORM (`db.select()`, `db.insert()`, `db.delete()`).
-   - Implements `ITodoRepository` allowing mock injection for unit testing without a live database.
-   - **Rule**: The only layer permitted to query Drizzle tables directly.
+   - **`todo-list.repository.ts`**: Single efficient `LEFT JOIN ... COUNT(todos.id) GROUP BY todo_lists.id` for list counts, atomic name update, atomic delete with `RETURNING id`.
+   - **`todo.repository.ts`**: Scoped queries `findAllByListId` ordered by `createdAt desc`, atomic `updateStatus`, single atomic `delete` with `RETURNING id`.
 
 5. **Database Layer (`src/db/`)**
-   - `schema/todos.ts`: Single source of truth for the `todos` table definition using PostgreSQL UUIDs and timestamps.
-   - `index.ts`: PostgreSQL connection pooler (compatible with Supabase transaction poolers via `postgres.js`).
-   - `migrations/`: Version-controlled SQL migration scripts generated by Drizzle Kit.
-
-6. **Validation Layer (`src/lib/validations/`)**
-   - `todo.ts`: Shared Zod schemas (`createTodoSchema`, `deleteTodoSchema`). Shared across client-side forms and backend tRPC input parsers.
+   - **`schema/lists.ts`**: `todo_lists` table (`id` UUID, `name` text, `created_at`, `updated_at`).
+   - **`schema/todos.ts`**: `todos` table (`id` UUID, `list_id` UUID foreign key with `onDelete: cascade`, `title`, `description`, `status` enum `['TODO', 'IN_PROGRESS', 'DONE']`, `created_at`, `updated_at`), with compound index `(list_id, created_at)`.
+   - **`migrations/`**: Drizzle SQL migrations (`0000_futuristic_fixer.sql`, `0001_lucky_alice.sql`).
 
 ---
 
-## 4. Folder Structure
+## 4. Database Schema
 
-```text
-todolist/
-├── .env.example                    # Environment variable template
-├── .gitignore                      # Git ignore rules (securing .env files)
-├── drizzle.config.ts               # Drizzle Kit migration configuration
-├── next.config.ts                  # Next.js App Router configuration
-├── package.json                    # Project dependencies and script declarations
-├── tsconfig.json                   # Strict TypeScript compiler options
-├── vitest.config.mts               # Vitest configuration with JSDOM
-├── src/
-│   ├── app/                        # Next.js App Router
-│   │   ├── api/trpc/[trpc]/        # tRPC HTTP fetch route handler
-│   │   │   └── route.ts
-│   │   ├── globals.css             # Tailwind base styles and theme variables
-│   │   ├── layout.tsx              # Root HTML shell & TRPCProvider wrapper
-│   │   └── page.tsx                # Dashboard root page
-│   ├── components/
-│   │   ├── providers/              # TRPCProvider and TanStack QueryClient
-│   │   │   └── trpc-provider.tsx
-│   │   ├── todos/                  # Domain-specific UI components
-│   │   │   ├── todo-dashboard.tsx  # Minimalist dashboard layout
-│   │   │   ├── todo-form.tsx       # Task creation form with inline validation
-│   │   │   ├── todo-item.tsx       # Individual task card with delete action
-│   │   │   └── todo-list.tsx       # Task list with loading, error, empty states
-│   │   └── ui/                     # shadcn-style atomic primitives
-│   │       ├── badge.tsx
-│   │       ├── button.tsx
-│   │       ├── card.tsx
-│   │       ├── input.tsx
-│   │       └── textarea.tsx
-│   ├── db/
-│   │   ├── index.ts                # Drizzle client instance & connection pool
-│   │   ├── migrations/             # Generated SQL migration files
-│   │   │   ├── 0000_futuristic_fixer.sql
-│   │   │   └── meta/
-│   │   └── schema/                 # Drizzle table schemas
-│   │       ├── index.ts
-│   │       └── todos.ts
-│   ├── lib/
-│   │   ├── trpc/                   # Client-side tRPC hooks
-│   │   │   └── client.ts
-│   │   ├── utils.ts                # Tailwind class merging utility (cn)
-│   │   └── validations/            # Zod validation schemas
-│   │       └── todo.ts
-│   └── server/
-│       ├── api/
-│       │   ├── root.ts             # AppRouter aggregation
-│       │   ├── trpc.ts             # tRPC procedure definitions & context
-│       │   └── routers/
-│       │       └── todo.router.ts  # Todo tRPC procedures
-│       ├── repositories/
-│       │   └── todo.repository.ts  # Database repository (Drizzle queries)
-│       └── services/
-│           └── todo.service.ts     # Business logic & domain enforcement
-└── tests/
-    ├── setup.ts                    # Vitest environment setup
-    └── unit/
-        ├── repositories/
-        │   └── todo.repository.test.ts
-        ├── services/
-        │   └── todo.service.test.ts
-        └── validations/
-            └── todo.test.ts
+```sql
+-- Status Enum
+CREATE TYPE "public"."todo_status" AS ENUM('TODO', 'IN_PROGRESS', 'DONE');
+
+-- Lists Table
+CREATE TABLE "todo_lists" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "name" varchar(100) NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+-- Todos Table
+CREATE TABLE "todos" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "list_id" uuid NOT NULL REFERENCES "todo_lists"("id") ON DELETE CASCADE,
+  "title" varchar(255) NOT NULL,
+  "description" text,
+  "status" "todo_status" DEFAULT 'TODO' NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE INDEX "todos_list_id_created_at_idx" ON "todos" ("list_id", "created_at");
 ```
 
 ---
 
-## 5. Prerequisites
-
-- **Node.js**: v20+ (tested on Node v24.13.0)
-- **npm** / **pnpm**
-- **Supabase Account / PostgreSQL instance**
-
----
-
-## 6. Environment Configuration
-
-1. Copy `.env.example` to `.env.local`:
-   ```bash
-   cp .env.example .env.local
-   ```
-2. Configure your database connection string in `.env.local`:
-   ```env
-   DATABASE_URL="postgresql://postgres.[PROJECT_REF]:[YOUR_PASSWORD]@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-   ```
-   > **Note on Supabase Pooler**: For serverless and Next.js environments, use the transaction pooler on port `6543` with `?pgbouncer=true`. To run Drizzle migrations directly, you may also use session mode or the direct connection on port `5432`.
-
----
-
-## 7. Database Migrations
-
-Generate migration SQL from schemas:
-```bash
-npm run db:generate
-```
-
-Apply migrations to your Supabase PostgreSQL database:
-```bash
-npm run db:migrate
-```
-
-Inspect database tables with Drizzle Studio GUI:
-```bash
-npm run db:studio
-```
-
----
-
-## 8. Development & Testing Commands
+## 5. Development & Testing Commands
 
 | Command | Action |
 |---|---|
 | `npm run dev` | Starts local Next.js development server at `http://localhost:3000` |
-| `npm run build` | Compiles optimized production build |
-| `npm run start` | Starts production server |
-| `npm test` | Runs the test suite via Vitest |
-| `npm run test:watch` | Runs Vitest in watch mode for interactive TDD |
-| `npm run lint` | Runs ESLint analysis |
+| `npm run build` | Compiles optimized production build with Turbopack |
+| `npm test` | Runs the complete 79-test Vitest test suite |
+| `npx tsx --env-file=.env.local scripts/verify-phase2-live.ts` | Runs the automated live Supabase integration suite |
+| `npm run db:generate` | Generates new SQL migration files from Drizzle schemas |
+| `npm run db:migrate` | Applies pending migrations to PostgreSQL |
+| `npm run db:studio` | Opens interactive Drizzle Studio database viewer |
 
 ---
 
-## 9. Architectural Decisions & Rationale
+## 6. Safe Deletion Policy
 
-- **Modular Monolith over Microservices**: For a Todo application, distributed services introduce network latency, deployment overhead, and cross-boundary serialization without tangible benefit. A modular monolith provides identical boundaries and separation of concerns while keeping latency near zero and code navigation straightforward.
-- **Repository Pattern**: By wrapping Drizzle ORM operations behind `ITodoRepository`, the `TodoService` and tRPC procedures remain agnostic of database internals. This allows isolated unit testing using test doubles and prevents raw queries from leaking into controllers or UI components.
-- **Drizzle ORM over Prisma**: Drizzle provides a zero-overhead, SQL-like syntax with superior cold-start performance and native connection-pool compatibility, crucial for serverless Next.js deployments on Supabase.
-- **Client/Server Validation Sharing**: Zod schemas are defined in `src/lib/validations/` and imported by both backend tRPC routers and frontend form validation, eliminating code duplication and ensuring contract consistency.
+When a user requests to delete a list:
+1. **Empty list (`taskCount === 0`)**: Deletes immediately.
+2. **List containing tasks (`taskCount > 0`) without confirmation (`force === false`)**: Rejected at the domain service layer with a `ValidationError`.
+3. **List containing tasks with confirmation (`force === true`)**: The UI displays a warning modal stating the exact task count and consequences. Upon explicit confirmation, the list and all cascaded tasks are permanently removed in a single atomic database operation.

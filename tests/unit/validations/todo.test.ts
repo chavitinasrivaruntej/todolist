@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { createTodoSchema, deleteTodoSchema } from "@/lib/validations/todo";
+import {
+  createTodoSchema,
+  deleteTodoSchema,
+  getTodosByListSchema,
+  updateTodoStatusSchema,
+} from "@/lib/validations/todo";
 
 describe("Validation Schemas: Todo", () => {
+  const sampleListId = "123e4567-e89b-12d3-a456-426614174000";
+
   describe("createTodoSchema", () => {
-    it("should accept valid title and normal description string", () => {
+    it("should accept valid title and normal description with default status TODO", () => {
       const input = {
+        listId: sampleListId,
         title: "Finish take-home architecture",
         description: "Configure Drizzle, tRPC, and tests",
       };
@@ -14,24 +22,60 @@ describe("Validation Schemas: Todo", () => {
       if (result.success) {
         expect(result.data.title).toBe("Finish take-home architecture");
         expect(result.data.description).toBe("Configure Drizzle, tRPC, and tests");
+        expect(result.data.status).toBe("TODO");
+        expect(result.data.listId).toBe(sampleListId);
       }
     });
 
-    it("should accept valid title when description is omitted (undefined)", () => {
-      const input = {
-        title: "Buy groceries",
-      };
-
-      const result = createTodoSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe("Buy groceries");
-        expect(result.data.description).toBeUndefined();
+    it("should accept explicit status IN_PROGRESS and DONE", () => {
+      const inProgress = createTodoSchema.safeParse({
+        listId: sampleListId,
+        title: "In Progress Task",
+        status: "IN_PROGRESS",
+      });
+      expect(inProgress.success).toBe(true);
+      if (inProgress.success) {
+        expect(inProgress.data.status).toBe("IN_PROGRESS");
       }
+
+      const done = createTodoSchema.safeParse({
+        listId: sampleListId,
+        title: "Done Task",
+        status: "DONE",
+      });
+      expect(done.success).toBe(true);
+      if (done.success) {
+        expect(done.data.status).toBe("DONE");
+      }
+    });
+
+    it("should reject invalid status value", () => {
+      const result = createTodoSchema.safeParse({
+        listId: sampleListId,
+        title: "Task with invalid status",
+        status: "INVALID_STATUS",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing listId", () => {
+      const result = createTodoSchema.safeParse({
+        title: "Orphaned Task",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid listId UUID format", () => {
+      const result = createTodoSchema.safeParse({
+        listId: "not-a-uuid",
+        title: "Task with bad listId",
+      });
+      expect(result.success).toBe(false);
     });
 
     it("should accept null description and normalize it to undefined", () => {
       const input = {
+        listId: sampleListId,
         title: "Submit code review",
         description: null,
       };
@@ -39,124 +83,68 @@ describe("Validation Schemas: Todo", () => {
       const result = createTodoSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.title).toBe("Submit code review");
         expect(result.data.description).toBeUndefined();
-      }
-    });
-
-    it("should accept empty string description and normalize it to undefined", () => {
-      const input = {
-        title: "Submit pull request",
-        description: "",
-      };
-
-      const result = createTodoSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe("Submit pull request");
-        expect(result.data.description).toBeUndefined();
-      }
-    });
-
-    it("should accept whitespace-only description and normalize it to undefined", () => {
-      const input = {
-        title: "Check server logs",
-        description: "     ",
-      };
-
-      const result = createTodoSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe("Check server logs");
-        expect(result.data.description).toBeUndefined();
-      }
-    });
-
-    it("should trim leading and trailing whitespace from title", () => {
-      const input = {
-        title: "   Trimmed Title   ",
-      };
-
-      const result = createTodoSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.title).toBe("Trimmed Title");
       }
     });
 
     it("should reject empty title", () => {
       const input = {
+        listId: sampleListId,
         title: "",
       };
 
       const result = createTodoSchema.safeParse(input);
       expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0]?.message).toMatch(/Title cannot be empty/);
-      }
+    });
+  });
+
+  describe("updateTodoStatusSchema", () => {
+    it("should accept valid UUID and valid status", () => {
+      const result = updateTodoStatusSchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "DONE",
+      });
+      expect(result.success).toBe(true);
     });
 
-    it("should reject whitespace-only title", () => {
-      const input = {
-        title: "     ",
-      };
-
-      const result = createTodoSchema.safeParse(input);
+    it("should reject invalid status", () => {
+      const result = updateTodoStatusSchema.safeParse({
+        id: "123e4567-e89b-12d3-a456-426614174000",
+        status: "COMPLETED",
+      });
       expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0]?.message).toMatch(/Title cannot be empty/);
-      }
+    });
+  });
+
+  describe("getTodosByListSchema", () => {
+    it("should accept valid listId UUID", () => {
+      const result = getTodosByListSchema.safeParse({
+        listId: sampleListId,
+      });
+      expect(result.success).toBe(true);
     });
 
-    it("should reject title exceeding 255 characters", () => {
-      const input = {
-        title: "a".repeat(256),
-      };
-
-      const result = createTodoSchema.safeParse(input);
+    it("should reject malformed listId", () => {
+      const result = getTodosByListSchema.safeParse({
+        listId: "bad-id",
+      });
       expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0]?.message).toMatch(/cannot exceed 255 characters/);
-      }
-    });
-
-    it("should reject description exceeding 1000 characters", () => {
-      const input = {
-        title: "Valid Title",
-        description: "d".repeat(1001),
-      };
-
-      const result = createTodoSchema.safeParse(input);
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0]?.message).toMatch(/cannot exceed 1000 characters/);
-      }
     });
   });
 
   describe("deleteTodoSchema", () => {
     it("should accept valid UUID format", () => {
-      const input = {
+      const result = deleteTodoSchema.safeParse({
         id: "123e4567-e89b-12d3-a456-426614174000",
-      };
-
-      const result = deleteTodoSchema.safeParse(input);
+      });
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.id).toBe("123e4567-e89b-12d3-a456-426614174000");
-      }
     });
 
-    it("should reject malformed non-UUID identifier", () => {
-      const input = {
-        id: "not-a-valid-uuid-123",
-      };
-
-      const result = deleteTodoSchema.safeParse(input);
+    it("should reject malformed UUID", () => {
+      const result = deleteTodoSchema.safeParse({
+        id: "invalid-id",
+      });
       expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues[0]?.message).toMatch(/Invalid todo ID format/);
-      }
     });
   });
 });

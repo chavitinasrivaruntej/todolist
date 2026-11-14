@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TodoForm } from "@/components/todos/todo-form";
-import { TodoItem } from "@/components/todos/todo-item";
+import { TodoItem, type TodoListItem } from "@/components/todos/todo-item";
 import { trpc } from "@/lib/trpc/client";
 
 vi.mock("@/lib/trpc/client", () => ({
@@ -15,8 +15,17 @@ vi.mock("@/lib/trpc/client", () => ({
       delete: {
         useMutation: vi.fn(),
       },
+      updateStatus: {
+        useMutation: vi.fn(),
+      },
       list: {
         useQuery: vi.fn(),
+      },
+    },
+    todoList: {
+      list: {
+        useQuery: vi.fn(),
+        invalidate: vi.fn(),
       },
     },
   },
@@ -24,6 +33,7 @@ vi.mock("@/lib/trpc/client", () => ({
 
 describe("UI Components", () => {
   const mockMutate = vi.fn();
+  const mockStatusMutate = vi.fn();
   const mockInvalidate = vi.fn();
 
   beforeEach(() => {
@@ -34,7 +44,17 @@ describe("UI Components", () => {
           invalidate: mockInvalidate,
         },
       },
+      todoList: {
+        list: {
+          invalidate: mockInvalidate,
+        },
+      },
     } as unknown as ReturnType<typeof trpc.useUtils>);
+
+    vi.mocked(trpc.todo.updateStatus.useMutation).mockReturnValue({
+      mutate: mockStatusMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof trpc.todo.updateStatus.useMutation>);
   });
 
   describe("TodoForm", () => {
@@ -44,11 +64,11 @@ describe("UI Components", () => {
         isPending: false,
       } as unknown as ReturnType<typeof trpc.todo.create.useMutation>);
 
-      render(<TodoForm />);
+      render(<TodoForm listId="list-123" listName="College" />);
 
       expect(screen.getByLabelText(/Title/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Description/i)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Add Todo/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Add Task/i })).toBeInTheDocument();
     });
 
     it("should disable submit button when title is empty", () => {
@@ -57,9 +77,9 @@ describe("UI Components", () => {
         isPending: false,
       } as unknown as ReturnType<typeof trpc.todo.create.useMutation>);
 
-      render(<TodoForm />);
+      render(<TodoForm listId="list-123" listName="College" />);
 
-      const submitButton = screen.getByRole("button", { name: /Add Todo/i });
+      const submitButton = screen.getByRole("button", { name: /Add Task/i });
       expect(submitButton).toBeDisabled();
     });
 
@@ -69,28 +89,32 @@ describe("UI Components", () => {
         isPending: false,
       } as unknown as ReturnType<typeof trpc.todo.create.useMutation>);
 
-      render(<TodoForm />);
+      render(<TodoForm listId="list-123" listName="College" />);
 
       const titleInput = screen.getByLabelText(/Title/i);
       fireEvent.change(titleInput, { target: { value: "Implement testing" } });
 
-      const submitButton = screen.getByRole("button", { name: /Add Todo/i });
+      const submitButton = screen.getByRole("button", { name: /Add Task/i });
       expect(submitButton).not.toBeDisabled();
 
       fireEvent.click(submitButton);
 
       expect(mockMutate).toHaveBeenCalledWith({
+        listId: "list-123",
         title: "Implement testing",
         description: undefined,
+        status: "TODO",
       });
     });
   });
 
   describe("TodoItem", () => {
-    const sampleTodo = {
-      id: "123e4567-e89b-12d3-a456-426614174000",
+    const sampleTodo: TodoListItem = {
+      id: "123e4567-e89b-42d3-a456-426614174000",
+      listId: "list-123",
       title: "UI Card Task",
       description: "Optional notes here",
+      status: "TODO" as const,
       createdAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       updatedAt: new Date("2026-05-01T12:00:00Z").toISOString(),
     };
@@ -101,7 +125,7 @@ describe("UI Components", () => {
         isPending: false,
       } as unknown as ReturnType<typeof trpc.todo.delete.useMutation>);
 
-      render(<TodoItem todo={sampleTodo} />);
+      render(<TodoItem todo={sampleTodo} listId="list-123" />);
 
       expect(screen.getByText("UI Card Task")).toBeInTheDocument();
       expect(screen.getByText("Optional notes here")).toBeInTheDocument();
@@ -116,7 +140,7 @@ describe("UI Components", () => {
         isPending: false,
       } as unknown as ReturnType<typeof trpc.todo.delete.useMutation>);
 
-      render(<TodoItem todo={sampleTodo} />);
+      render(<TodoItem todo={sampleTodo} listId="list-123" />);
 
       const deleteButton = screen.getByRole("button", {
         name: /Delete todo: UI Card Task/i,
@@ -124,6 +148,23 @@ describe("UI Components", () => {
       fireEvent.click(deleteButton);
 
       expect(mockMutate).toHaveBeenCalledWith({ id: sampleTodo.id });
+    });
+
+    it("should trigger updateStatus mutation when status select changes", () => {
+      vi.mocked(trpc.todo.delete.useMutation).mockReturnValue({
+        mutate: mockMutate,
+        isPending: false,
+      } as unknown as ReturnType<typeof trpc.todo.delete.useMutation>);
+
+      render(<TodoItem todo={sampleTodo} listId="list-123" />);
+
+      const select = screen.getByLabelText(/Change status for UI Card Task/i);
+      fireEvent.change(select, { target: { value: "DONE" } });
+
+      expect(mockStatusMutate).toHaveBeenCalledWith({
+        id: sampleTodo.id,
+        status: "DONE",
+      });
     });
 
     it("should render error message and retry button when deletion mutation fails", () => {
@@ -137,9 +178,8 @@ describe("UI Components", () => {
         } as unknown as ReturnType<typeof trpc.todo.delete.useMutation>;
       });
 
-      render(<TodoItem todo={sampleTodo} />);
+      render(<TodoItem todo={sampleTodo} listId="list-123" />);
 
-      // Simulate deletion error callback inside act
       expect(onErrorCallback).toBeDefined();
       act(() => {
         onErrorCallback?.({ message: "Network connection lost" });

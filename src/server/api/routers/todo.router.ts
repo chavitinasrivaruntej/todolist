@@ -1,22 +1,28 @@
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
-import { createTodoSchema, deleteTodoSchema } from "@/lib/validations/todo";
+import {
+  createTodoSchema,
+  deleteTodoSchema,
+  getTodosByListSchema,
+  updateTodoStatusSchema,
+} from "@/lib/validations/todo";
 import { todoService } from "@/server/services/todo.service";
 
 /**
  * Todo tRPC router.
- * Acts as the API transport layer, validating inputs with Zod schemas and
- * delegating business logic execution to TodoService.
+ * Handles API endpoints for tasks scoped to individual Todo Lists.
  */
 export const todoRouter = createTRPCRouter({
   /**
-   * Query to list all todos
+   * Retrieves all todos belonging to a specific list.
    */
-  list: publicProcedure.query(async () => {
-    return todoService.getTodos();
-  }),
+  list: publicProcedure
+    .input(getTodosByListSchema)
+    .query(async ({ input }) => {
+      return todoService.getTodosByList(input);
+    }),
 
   /**
-   * Mutation to create a new todo
+   * Creates a new todo within the specified list.
    */
   create: publicProcedure
     .input(createTodoSchema)
@@ -25,7 +31,16 @@ export const todoRouter = createTRPCRouter({
     }),
 
   /**
-   * Mutation to delete a todo by ID
+   * Updates the status of an existing todo (TODO, IN_PROGRESS, DONE).
+   */
+  updateStatus: publicProcedure
+    .input(updateTodoStatusSchema)
+    .mutation(async ({ input }) => {
+      return todoService.updateStatus(input);
+    }),
+
+  /**
+   * Deletes a todo by ID.
    */
   delete: publicProcedure
     .input(deleteTodoSchema)
@@ -33,4 +48,3 @@ export const todoRouter = createTRPCRouter({
       return todoService.deleteTodo(input);
     }),
 });
-

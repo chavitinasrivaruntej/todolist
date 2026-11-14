@@ -10,10 +10,13 @@ describe("tRPC API: Todo Router", () => {
       headers: undefined,
     });
 
+  const sampleListId = "123e4567-e89b-42d3-a456-426614174001";
   const sampleTodo = {
-    id: "123e4567-e89b-12d3-a456-426614174000",
+    id: "123e4567-e89b-42d3-a456-426614174000",
+    listId: sampleListId,
     title: "Integration Task",
     description: "Testing tRPC procedures",
+    status: "TODO" as const,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };
@@ -23,14 +26,22 @@ describe("tRPC API: Todo Router", () => {
   });
 
   describe("todo.list", () => {
-    it("should return the list of todos from service", async () => {
-      vi.spyOn(todoService, "getTodos").mockResolvedValue([sampleTodo]);
+    it("should return the list of todos for a specific listId from service", async () => {
+      vi.spyOn(todoService, "getTodosByList").mockResolvedValue([sampleTodo]);
 
       const caller = createCaller();
-      const result = await caller.todo.list();
+      const result = await caller.todo.list({ listId: sampleListId });
 
-      expect(todoService.getTodos).toHaveBeenCalledTimes(1);
+      expect(todoService.getTodosByList).toHaveBeenCalledWith({ listId: sampleListId });
       expect(result).toEqual([sampleTodo]);
+    });
+
+    it("should reject non-UUID listId with BAD_REQUEST", async () => {
+      const caller = createCaller();
+
+      await expect(
+        caller.todo.list({ listId: "invalid-uuid" })
+      ).rejects.toThrowError(TRPCError);
     });
   });
 
@@ -40,23 +51,28 @@ describe("tRPC API: Todo Router", () => {
 
       const caller = createCaller();
       const result = await caller.todo.create({
+        listId: sampleListId,
         title: "Integration Task",
         description: "Testing tRPC procedures",
+        status: "TODO",
       });
 
       expect(todoService.createTodo).toHaveBeenCalledWith({
+        listId: sampleListId,
         title: "Integration Task",
         description: "Testing tRPC procedures",
+        status: "TODO",
       });
       expect(result).toEqual(sampleTodo);
     });
 
-    it("should reject invalid input schema with BAD_REQUEST", async () => {
+    it("should reject missing listId with BAD_REQUEST", async () => {
       const caller = createCaller();
 
       await expect(
+        // @ts-expect-error testing missing field validation
         caller.todo.create({
-          title: "",
+          title: "Missing List ID",
         })
       ).rejects.toThrowError(TRPCError);
     });
@@ -70,12 +86,32 @@ describe("tRPC API: Todo Router", () => {
 
       await expect(
         caller.todo.create({
+          listId: sampleListId,
           title: "Valid Title",
         })
       ).rejects.toMatchObject({
         code: "BAD_REQUEST",
         message: "Domain validation failed",
       });
+    });
+  });
+
+  describe("todo.updateStatus", () => {
+    it("should update status and return updated todo", async () => {
+      const updatedTodo = { ...sampleTodo, status: "IN_PROGRESS" as const };
+      vi.spyOn(todoService, "updateStatus").mockResolvedValue(updatedTodo);
+
+      const caller = createCaller();
+      const result = await caller.todo.updateStatus({
+        id: sampleTodo.id,
+        status: "IN_PROGRESS",
+      });
+
+      expect(todoService.updateStatus).toHaveBeenCalledWith({
+        id: sampleTodo.id,
+        status: "IN_PROGRESS",
+      });
+      expect(result).toEqual(updatedTodo);
     });
   });
 
@@ -130,4 +166,3 @@ describe("tRPC API: Todo Router", () => {
     });
   });
 });
-

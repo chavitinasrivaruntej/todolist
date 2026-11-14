@@ -7,10 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PlusCircle, Loader2 } from "lucide-react";
+import { type TodoStatusType, TODO_STATUSES } from "@/lib/validations/todo";
 
-export function TodoForm() {
+interface TodoFormProps {
+  listId: string;
+  listName: string;
+}
+
+export function TodoForm({ listId, listName }: TodoFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [status, setStatus] = useState<TodoStatusType>("TODO");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
@@ -19,8 +26,12 @@ export function TodoForm() {
     onSuccess: async () => {
       setTitle("");
       setDescription("");
+      setStatus("TODO");
       setValidationError(null);
-      await utils.todo.list.invalidate();
+      await Promise.all([
+        utils.todo.list.invalidate({ listId }),
+        utils.todoList.list.invalidate(),
+      ]);
     },
     onError: (err) => {
       setValidationError(err.message || "Failed to create todo.");
@@ -38,28 +49,32 @@ export function TodoForm() {
 
     setValidationError(null);
     createMutation.mutate({
+      listId,
       title: trimmedTitle,
       description: description.trim() ? description.trim() : undefined,
+      status,
     });
   };
 
   return (
     <Card className="border-neutral-200/80 shadow-sm dark:border-neutral-800">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-base font-medium">Create New Task</CardTitle>
-        <CardDescription>
-          Add a task with an optional description to keep track of your work.
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium">
+          Add Task to <span className="font-semibold text-neutral-900 dark:text-neutral-50">{listName}</span>
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Create a task with an initial status and optional notes.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label htmlFor="todo-title" className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
               Title <span className="text-red-500">*</span>
             </label>
             <Input
               id="todo-title"
-              placeholder="e.g. Implement authentication module"
+              placeholder="e.g. Prepare presentation slides"
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
@@ -67,28 +82,49 @@ export function TodoForm() {
               }}
               disabled={createMutation.isPending}
               maxLength={255}
-              className="bg-neutral-50/50 dark:bg-neutral-900/50"
+              className="bg-neutral-50/50 dark:bg-neutral-900/50 text-xs"
             />
           </div>
 
-          <div>
-            <label htmlFor="todo-desc" className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Description (optional)
-            </label>
-            <Textarea
-              id="todo-desc"
-              placeholder="Additional context, links, or acceptance criteria..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={createMutation.isPending}
-              rows={2}
-              maxLength={1000}
-              className="bg-neutral-50/50 dark:bg-neutral-900/50 resize-y"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label htmlFor="todo-desc" className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Description (optional)
+              </label>
+              <Textarea
+                id="todo-desc"
+                placeholder="Additional details..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={createMutation.isPending}
+                rows={2}
+                maxLength={1000}
+                className="bg-neutral-50/50 dark:bg-neutral-900/50 resize-y text-xs"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="todo-status-select" className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Initial Status
+              </label>
+              <select
+                id="todo-status-select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as TodoStatusType)}
+                disabled={createMutation.isPending}
+                className="flex h-9 w-full rounded-md border border-neutral-200 bg-neutral-50/50 px-2 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-neutral-50"
+              >
+                {TODO_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s === "IN_PROGRESS" ? "In Progress" : s === "TODO" ? "To Do" : "Done"}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {validationError && (
-            <div className="rounded-md bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+            <div className="rounded-md bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
               {validationError}
             </div>
           )}
@@ -98,7 +134,7 @@ export function TodoForm() {
               type="submit"
               disabled={createMutation.isPending || !title.trim()}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 text-xs h-8"
             >
               {createMutation.isPending ? (
                 <>
@@ -108,7 +144,7 @@ export function TodoForm() {
               ) : (
                 <>
                   <PlusCircle className="h-3.5 w-3.5" />
-                  <span>Add Todo</span>
+                  <span>Add Task</span>
                 </>
               )}
             </Button>
@@ -118,4 +154,3 @@ export function TodoForm() {
     </Card>
   );
 }
-

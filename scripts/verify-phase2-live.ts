@@ -1,0 +1,119 @@
+import { appRouter } from "../src/server/api/root";
+import { TRPCError } from "@trpc/server";
+
+async function runLiveVerification() {
+  console.log("=================================================");
+  console.log("Phase 2 Live Supabase Integration Verification");
+  console.log("=================================================");
+
+  const caller = appRouter.createCaller({
+    headers: undefined,
+  });
+
+  // Step 1: Initial lists query
+  console.log("\n[Step 1] Querying existing lists...");
+  const initialLists = await caller.todoList.list();
+  console.log(`Found ${initialLists.length} existing list(s):`, initialLists.map((l) => `${l.name} (${l.taskCount} tasks)`));
+
+  // Step 2: Create two lists ("Phase2-College" and "Phase2-Projects")
+  console.log("\n[Step 2] Creating test lists 'Phase2-College' and 'Phase2-Projects'...");
+  const collegeList = await caller.todoList.create({ name: "Phase2-College" });
+  console.log(`  ✓ Created list 'Phase2-College' with ID: ${collegeList.id}`);
+
+  const projectsList = await caller.todoList.create({ name: "Phase2-Projects" });
+  console.log(`  ✓ Created list 'Phase2-Projects' with ID: ${projectsList.id}`);
+
+  // Step 3: Add tasks to specific lists with different statuses
+  console.log("\n[Step 3] Adding scoped tasks to each list...");
+  const taskCollege = await caller.todo.create({
+    listId: collegeList.id,
+    title: "Study Operating Systems",
+    description: "Threads, concurrency, virtual memory",
+    status: "TODO",
+  });
+  console.log(`  ✓ Added task to College: "${taskCollege.title}" [status: ${taskCollege.status}] (ID: ${taskCollege.id})`);
+
+  const taskProjects = await caller.todo.create({
+    listId: projectsList.id,
+    title: "Build Drizzle Migration",
+    description: "Composite index on listId and createdAt",
+    status: "IN_PROGRESS",
+  });
+  console.log(`  ✓ Added task to Projects: "${taskProjects.title}" [status: ${taskProjects.status}] (ID: ${taskProjects.id})`);
+
+  // Step 4: Verify task isolation (no cross-list task leaking)
+  console.log("\n[Step 4] Verifying list isolation...");
+  const collegeTasks = await caller.todo.list({ listId: collegeList.id });
+  const projectsTasks = await caller.todo.list({ listId: projectsList.id });
+
+  console.log(`  College tasks count: ${collegeTasks.length}`);
+  console.log(`  Projects tasks count: ${projectsTasks.length}`);
+
+  if (collegeTasks.length !== 1 || collegeTasks[0]?.id !== taskCollege.id) {
+    throw new Error(`Assertion failed: College should have exactly 1 task (${taskCollege.id}), found ${collegeTasks.length}`);
+  }
+  if (projectsTasks.length !== 1 || projectsTasks[0]?.id !== taskProjects.id) {
+    throw new Error(`Assertion failed: Projects should have exactly 1 task (${taskProjects.id}), found ${projectsTasks.length}`);
+  }
+  console.log("  ✓ Strict list isolation verified: tasks strictly partitioned by listId!");
+
+  // Step 5: Update task status
+  console.log("\n[Step 5] Updating task status in College from TODO -> DONE...");
+  const updatedTask = await caller.todo.updateStatus({
+    id: taskCollege.id,
+    status: "DONE",
+  });
+  console.log(`  ✓ Task "${updatedTask.title}" updated to status: ${updatedTask.status}`);
+
+  if (updatedTask.status !== "DONE") {
+    throw new Error("Assertion failed: Task status did not update to DONE");
+  }
+
+  // Step 6: Safe deletion policy test
+  console.log("\n[Step 6] Testing safe list deletion policy...");
+  console.log("  Attempting to delete 'Phase2-Projects' without force (force: false)...");
+
+  let caughtError: unknown = null;
+  try {
+    await caller.todoList.delete({ id: projectsList.id, force: false });
+  } catch (err) {
+    caughtError = err;
+  }
+
+  if (caughtError instanceof TRPCError && caughtError.code === "BAD_REQUEST") {
+    console.log(`  ✓ Safe deletion policy BLOCKED deletion as expected! Error message: "${caughtError.message}"`);
+  } else {
+    throw new Error(`Expected TRPCError BAD_REQUEST when deleting non-empty list without force, got: ${caughtError}`);
+  }
+
+  // Step 7: Force delete list with tasks
+  console.log("\n[Step 7] Force deleting 'Phase2-Projects' with force: true...");
+  const forceDeleteResult = await caller.todoList.delete({ id: projectsList.id, force: true });
+  console.log(`  ✓ Force delete succeeded for ID: ${forceDeleteResult.id}`);
+
+  // Verify list and cascaded tasks are deleted
+  let listDeletedCheck = null;
+  try {
+    await caller.todo.list({ listId: projectsList.id });
+  } catch (err) {
+    listDeletedCheck = err;
+  }
+  if (listDeletedCheck instanceof TRPCError && listDeletedCheck.code === "NOT_FOUND") {
+    console.log("  ✓ Verified: Projects list was completely removed and querying its tasks throws NOT_FOUND!");
+  }
+
+  // Step 8: Clean up College list
+  console.log("\n[Step 8] Cleaning up 'Phase2-College' test list with force: true...");
+  await caller.todoList.delete({ id: collegeList.id, force: true });
+  console.log("  ✓ Cleanup completed successfully!");
+
+  console.log("\n=================================================");
+  console.log("ALL PHASE 2 LIVE SUPABASE TESTS PASSED 100%!");
+  console.log("=================================================\n");
+  process.exit(0);
+}
+
+runLiveVerification().catch((err) => {
+  console.error("Live verification failed:", err);
+  process.exit(1);
+});

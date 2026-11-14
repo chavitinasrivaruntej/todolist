@@ -1,7 +1,25 @@
-import { type ITodoRepository, todoRepository as defaultRepository } from "@/server/repositories/todo.repository";
-import { type CreateTodoInput, type DeleteTodoInput } from "@/lib/validations/todo";
-import { type Todo } from "@/db/schema/todos";
+import {
+  type ITodoRepository,
+  todoRepository as defaultRepository,
+} from "@/server/repositories/todo.repository";
+import {
+  type ITodoListRepository,
+  todoListRepository as defaultListRepository,
+} from "@/server/repositories/todo-list.repository";
+import {
+  type DeleteTodoInput,
+  type GetTodosByListInput,
+  type UpdateTodoStatusInput,
+} from "@/lib/validations/todo";
+import { type Todo, type TodoStatus } from "@/db/schema/todos";
 import { NotFoundError, ValidationError } from "@/server/errors";
+
+export interface CreateTodoServiceInput {
+  listId: string;
+  title: string;
+  description?: string | null;
+  status?: TodoStatus;
+}
 
 /**
  * TodoService encapsulates domain rules and business logic for Todo operations.
@@ -9,31 +27,61 @@ import { NotFoundError, ValidationError } from "@/server/errors";
  */
 export class TodoService {
   private readonly repository: ITodoRepository;
+  private readonly listRepository: ITodoListRepository;
 
-  constructor(repository: ITodoRepository = defaultRepository) {
+  constructor(
+    repository: ITodoRepository = defaultRepository,
+    listRepository: ITodoListRepository = defaultListRepository
+  ) {
     this.repository = repository;
+    this.listRepository = listRepository;
   }
 
   /**
-   * Retrieves all todo items ordered chronologically descending (newest first).
+   * Retrieves all todo items belonging to a specific list, ordered descending by creation date.
    */
-  async getTodos(): Promise<Todo[]> {
-    return this.repository.findAll();
+  async getTodosByList(input: GetTodosByListInput): Promise<Todo[]> {
+    const listExists = await this.listRepository.findById(input.listId);
+    if (!listExists) {
+      throw new NotFoundError(`Todo list with ID ${input.listId} was not found.`);
+    }
+
+    return this.repository.findAllByListId(input.listId);
   }
 
   /**
-   * Creates a new todo item after validating business requirements.
+   * Creates a new todo item associated with a specific list.
+   * Enforces non-empty trimmed titles and valid list associations.
    */
-  async createTodo(input: CreateTodoInput): Promise<Todo> {
+  async createTodo(input: CreateTodoServiceInput): Promise<Todo> {
     const trimmedTitle = input.title.trim();
     if (!trimmedTitle) {
       throw new ValidationError("Todo title cannot be empty or solely whitespace.");
     }
 
+    const listExists = await this.listRepository.findById(input.listId);
+    if (!listExists) {
+      throw new NotFoundError(`Cannot create todo: Todo list with ID ${input.listId} does not exist.`);
+    }
+
     return this.repository.create({
+      listId: input.listId,
       title: trimmedTitle,
       description: input.description ?? null,
+      status: input.status ?? "TODO",
     });
+  }
+
+  /**
+   * Updates the status of an existing Todo item.
+   */
+  async updateStatus(input: UpdateTodoStatusInput): Promise<Todo> {
+    const updated = await this.repository.updateStatus(input.id, input.status);
+    if (!updated) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
+    return updated;
   }
 
   /**

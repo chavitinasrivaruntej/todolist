@@ -4,6 +4,8 @@ import { type Database } from "@/db";
 import { todos } from "@/db/schema/todos";
 
 describe("TodoRepository", () => {
+  const sampleListId = "11111111-1111-1111-1111-111111111111";
+
   describe("delete", () => {
     it("should execute DELETE with RETURNING and return true when row was deleted", async () => {
       const mockReturning = vi.fn().mockResolvedValue([{ id: "test-uuid" }]);
@@ -41,11 +43,13 @@ describe("TodoRepository", () => {
   });
 
   describe("create", () => {
-    it("should execute INSERT with returning and return created record", async () => {
+    it("should execute INSERT with returning and return created record with status", async () => {
       const createdRecord = {
         id: "new-uuid",
+        listId: sampleListId,
         title: "Test Task",
         description: null,
+        status: "TODO" as const,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -59,25 +63,31 @@ describe("TodoRepository", () => {
       } as unknown as Database;
 
       const repo = new TodoRepository(mockDb);
-      const result = await repo.create({ title: "Test Task" });
+      const result = await repo.create({
+        listId: sampleListId,
+        title: "Test Task",
+      });
 
       expect(mockInsert).toHaveBeenCalledWith(todos);
       expect(mockValues).toHaveBeenCalledWith({
+        listId: sampleListId,
         title: "Test Task",
         description: null,
+        status: "TODO",
       });
       expect(result).toEqual(createdRecord);
     });
   });
 
-  describe("findAll", () => {
-    it("should query todos ordered by createdAt descending", async () => {
+  describe("findAllByListId", () => {
+    it("should query todos for specific listId ordered by createdAt descending", async () => {
       const records = [
-        { id: "1", title: "Task 1", createdAt: new Date() },
+        { id: "1", listId: sampleListId, title: "Task 1", createdAt: new Date() },
       ];
 
       const mockOrderBy = vi.fn().mockResolvedValue(records);
-      const mockFrom = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+      const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
       const mockSelect = vi.fn().mockReturnValue({ from: mockFrom });
 
       const mockDb = {
@@ -85,11 +95,41 @@ describe("TodoRepository", () => {
       } as unknown as Database;
 
       const repo = new TodoRepository(mockDb);
-      const result = await repo.findAll();
+      const result = await repo.findAllByListId(sampleListId);
 
       expect(mockSelect).toHaveBeenCalled();
       expect(mockFrom).toHaveBeenCalledWith(todos);
+      expect(mockWhere).toHaveBeenCalled();
       expect(result).toEqual(records);
+    });
+  });
+
+  describe("updateStatus", () => {
+    it("should update status and return updated record", async () => {
+      const updatedRecord = {
+        id: "task-1",
+        listId: sampleListId,
+        title: "Task 1",
+        status: "DONE" as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const mockReturning = vi.fn().mockResolvedValue([updatedRecord]);
+      const mockWhere = vi.fn().mockReturnValue({ returning: mockReturning });
+      const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
+      const mockUpdate = vi.fn().mockReturnValue({ set: mockSet });
+
+      const mockDb = {
+        update: mockUpdate,
+      } as unknown as Database;
+
+      const repo = new TodoRepository(mockDb);
+      const result = await repo.updateStatus("task-1", "DONE");
+
+      expect(mockUpdate).toHaveBeenCalledWith(todos);
+      expect(mockSet).toHaveBeenCalled();
+      expect(result).toEqual(updatedRecord);
     });
   });
 });
