@@ -8,6 +8,7 @@ import { TodoList } from "@/components/todos/todo-list";
 import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
 import { useListViewPreference } from "@/hooks/use-list-view-preference";
+import { UserMenu } from "@/components/auth/user-menu";
 import { Badge } from "@/components/ui/badge";
 import { ListTodo, CheckCircle2 } from "lucide-react";
 
@@ -45,13 +46,13 @@ export function TodoDashboard() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 3
+              Phase 4
             </Badge>
           </div>
-          <span className="text-xs text-neutral-400 font-mono">Personal Lists & Kanban</span>
+          <UserMenu />
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Organize your tasks into personal lists with dual List and Kanban Board views.
+          Personal authenticated workspaces with dual List and Kanban Board views.
         </p>
       </header>
 

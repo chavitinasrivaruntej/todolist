@@ -1,4 +1,4 @@
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import {
   createTodoSchema,
   deleteTodoSchema,
@@ -10,41 +10,42 @@ import { todoService } from "@/server/services/todo.service";
 /**
  * Todo tRPC router.
  * Handles API endpoints for tasks scoped to individual Todo Lists.
+ * All operations require an authenticated user session and verify list/task ownership.
  */
 export const todoRouter = createTRPCRouter({
   /**
-   * Retrieves all todos belonging to a specific list.
+   * Retrieves all todos belonging to a specific list owned by the authenticated user.
    */
-  list: publicProcedure
+  list: protectedProcedure
     .input(getTodosByListSchema)
-    .query(async ({ input }) => {
-      return todoService.getTodosByList(input);
+    .query(async ({ input, ctx }) => {
+      return todoService.getTodosByList(input, ctx.user.id);
     }),
 
   /**
-   * Creates a new todo within the specified list.
+   * Creates a new todo within the specified list owned by the authenticated user.
    */
-  create: publicProcedure
+  create: protectedProcedure
     .input(createTodoSchema)
-    .mutation(async ({ input }) => {
-      return todoService.createTodo(input);
+    .mutation(async ({ input, ctx }) => {
+      return todoService.createTodo(input, ctx.user.id);
     }),
 
   /**
-   * Updates the status of an existing todo (TODO, IN_PROGRESS, DONE).
+   * Updates the status of an existing todo (TODO, IN_PROGRESS, DONE) owned by the authenticated user.
    */
-  updateStatus: publicProcedure
+  updateStatus: protectedProcedure
     .input(updateTodoStatusSchema)
-    .mutation(async ({ input }) => {
-      return todoService.updateStatus(input);
+    .mutation(async ({ input, ctx }) => {
+      return todoService.updateStatus(input, ctx.user.id);
     }),
 
   /**
-   * Deletes a todo by ID.
+   * Deletes a todo by ID belonging to a list owned by the authenticated user.
    */
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(deleteTodoSchema)
-    .mutation(async ({ input }) => {
-      return todoService.deleteTodo(input);
+    .mutation(async ({ input, ctx }) => {
+      return todoService.deleteTodo(input, ctx.user.id);
     }),
 });

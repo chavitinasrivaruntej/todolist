@@ -24,6 +24,7 @@ export interface CreateTodoServiceInput {
 /**
  * TodoService encapsulates domain rules and business logic for Todo operations.
  * Completely decoupled from API transport (tRPC) and database implementations.
+ * Enforces user ownership verification across all read, write, and delete operations.
  */
 export class TodoService {
   private readonly repository: ITodoRepository;
@@ -38,30 +39,41 @@ export class TodoService {
   }
 
   /**
-   * Retrieves all todo items belonging to a specific list, ordered descending by creation date.
+   * Retrieves all todo items belonging to a specific list owned by the user.
    */
-  async getTodosByList(input: GetTodosByListInput): Promise<Todo[]> {
-    const listExists = await this.listRepository.findById(input.listId);
+  async getTodosByList(
+    input: GetTodosByListInput,
+    userId: string
+  ): Promise<Todo[]> {
+    const listExists = await this.listRepository.findById(input.listId, userId);
     if (!listExists) {
-      throw new NotFoundError(`Todo list with ID ${input.listId} was not found.`);
+      throw new NotFoundError(
+        `Todo list with ID ${input.listId} was not found.`
+      );
     }
 
     return this.repository.findAllByListId(input.listId);
   }
 
   /**
-   * Creates a new todo item associated with a specific list.
-   * Enforces non-empty trimmed titles and valid list associations.
+   * Creates a new todo item within a list owned by the user.
    */
-  async createTodo(input: CreateTodoServiceInput): Promise<Todo> {
+  async createTodo(
+    input: CreateTodoServiceInput,
+    userId: string
+  ): Promise<Todo> {
     const trimmedTitle = input.title.trim();
     if (!trimmedTitle) {
-      throw new ValidationError("Todo title cannot be empty or solely whitespace.");
+      throw new ValidationError(
+        "Todo title cannot be empty or solely whitespace."
+      );
     }
 
-    const listExists = await this.listRepository.findById(input.listId);
+    const listExists = await this.listRepository.findById(input.listId, userId);
     if (!listExists) {
-      throw new NotFoundError(`Cannot create todo: Todo list with ID ${input.listId} does not exist.`);
+      throw new NotFoundError(
+        `Cannot create todo: Todo list with ID ${input.listId} does not exist.`
+      );
     }
 
     return this.repository.create({
@@ -73,10 +85,17 @@ export class TodoService {
   }
 
   /**
-   * Updates the status of an existing Todo item.
+   * Updates the status of an existing Todo item belonging to a list owned by the user.
    */
-  async updateStatus(input: UpdateTodoStatusInput): Promise<Todo> {
-    const updated = await this.repository.updateStatus(input.id, input.status);
+  async updateStatus(
+    input: UpdateTodoStatusInput,
+    userId: string
+  ): Promise<Todo> {
+    const updated = await this.repository.updateStatus(
+      input.id,
+      input.status,
+      userId
+    );
     if (!updated) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
     }
@@ -85,11 +104,13 @@ export class TodoService {
   }
 
   /**
-   * Deletes a todo item by ID in a single atomic database operation.
-   * If no record was deleted, throws a domain-level NotFoundError.
+   * Deletes a todo item by ID in a single atomic database operation scoped to the user's lists.
    */
-  async deleteTodo(input: DeleteTodoInput): Promise<{ success: boolean; id: string }> {
-    const deleted = await this.repository.delete(input.id);
+  async deleteTodo(
+    input: DeleteTodoInput,
+    userId: string
+  ): Promise<{ success: boolean; id: string }> {
+    const deleted = await this.repository.delete(input.id, userId);
     if (!deleted) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
     }

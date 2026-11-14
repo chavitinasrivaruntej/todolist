@@ -3,15 +3,26 @@ import { appRouter } from "@/server/api/root";
 import { todoListService } from "@/server/services/todo-list.service";
 import { NotFoundError, ValidationError } from "@/server/errors";
 import { TRPCError } from "@trpc/server";
+import type { User } from "@supabase/supabase-js";
 
 describe("tRPC API: TodoList Router", () => {
-  const createCaller = () =>
+  const mockUser: User = {
+    id: "user-1234-abcd",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
+
+  const createCaller = (user: User | null = mockUser) =>
     appRouter.createCaller({
       headers: undefined,
+      user,
     });
 
   const sampleList = {
     id: "123e4567-e89b-42d3-a456-426614174001",
+    userId: mockUser.id,
     name: "Projects",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -22,26 +33,38 @@ describe("tRPC API: TodoList Router", () => {
     vi.restoreAllMocks();
   });
 
+  describe("authentication guard", () => {
+    it("should reject unauthenticated request with UNAUTHORIZED", async () => {
+      const unauthedCaller = createCaller(null);
+      await expect(unauthedCaller.todoList.list()).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
+    });
+  });
+
   describe("todoList.list", () => {
-    it("should return all lists with task counts from service", async () => {
+    it("should return all lists with task counts from service for the authenticated user", async () => {
       vi.spyOn(todoListService, "getLists").mockResolvedValue([sampleList]);
 
       const caller = createCaller();
       const result = await caller.todoList.list();
 
-      expect(todoListService.getLists).toHaveBeenCalledTimes(1);
+      expect(todoListService.getLists).toHaveBeenCalledWith(mockUser.id);
       expect(result).toEqual([sampleList]);
     });
   });
 
   describe("todoList.create", () => {
-    it("should validate input schema and create list", async () => {
+    it("should validate input schema and create list scoped to authenticated user", async () => {
       vi.spyOn(todoListService, "createList").mockResolvedValue(sampleList);
 
       const caller = createCaller();
       const result = await caller.todoList.create({ name: "Projects" });
 
-      expect(todoListService.createList).toHaveBeenCalledWith({ name: "Projects" });
+      expect(todoListService.createList).toHaveBeenCalledWith(
+        { name: "Projects" },
+        mockUser.id
+      );
       expect(result).toEqual(sampleList);
     });
 
@@ -55,7 +78,7 @@ describe("tRPC API: TodoList Router", () => {
   });
 
   describe("todoList.rename", () => {
-    it("should rename an existing list", async () => {
+    it("should rename an existing list scoped to authenticated user", async () => {
       const renamed = { ...sampleList, name: "College Work" };
       vi.spyOn(todoListService, "renameList").mockResolvedValue(renamed);
 
@@ -65,10 +88,13 @@ describe("tRPC API: TodoList Router", () => {
         name: "College Work",
       });
 
-      expect(todoListService.renameList).toHaveBeenCalledWith({
-        id: sampleList.id,
-        name: "College Work",
-      });
+      expect(todoListService.renameList).toHaveBeenCalledWith(
+        {
+          id: sampleList.id,
+          name: "College Work",
+        },
+        mockUser.id
+      );
       expect(result).toEqual(renamed);
     });
   });
@@ -86,10 +112,13 @@ describe("tRPC API: TodoList Router", () => {
         force: false,
       });
 
-      expect(todoListService.deleteList).toHaveBeenCalledWith({
-        id: sampleList.id,
-        force: false,
-      });
+      expect(todoListService.deleteList).toHaveBeenCalledWith(
+        {
+          id: sampleList.id,
+          force: false,
+        },
+        mockUser.id
+      );
       expect(result).toEqual({ success: true, id: sampleList.id });
     });
 

@@ -13,7 +13,8 @@ import { NotFoundError, ValidationError } from "@/server/errors";
 
 /**
  * TodoListService encapsulates domain logic and business rules for Todo Lists.
- * Enforces safe deletion policies, input normalization, and boundary invariants.
+ * Enforces safe deletion policies, input normalization, and boundary invariants
+ * scoped strictly to the authenticated user (userId).
  */
 export class TodoListService {
   private readonly repository: ITodoListRepository;
@@ -23,39 +24,51 @@ export class TodoListService {
   }
 
   /**
-   * Returns all todo lists ordered chronologically ascending with their task counts.
+   * Returns all todo lists belonging to the user ordered chronologically ascending with their task counts.
+   * If a user has no lists yet, provisions an initial "Personal" workspace list.
    */
-  async getLists(): Promise<TodoListWithTaskCount[]> {
-    return this.repository.findAllWithTaskCounts();
+  async getLists(userId: string): Promise<TodoListWithTaskCount[]> {
+    const lists = await this.repository.findAllWithTaskCounts(userId);
+    if (lists.length === 0) {
+      const defaultList = await this.repository.create({
+        name: "Personal",
+        userId,
+      });
+      return [{ ...defaultList, taskCount: 0 }];
+    }
+    return lists;
   }
 
   /**
-   * Creates a new todo list. Enforces non-empty trimmed names.
+   * Creates a new todo list owned by the authenticated user.
    */
-  async createList(input: CreateTodoListInput): Promise<TodoList> {
+  async createList(input: CreateTodoListInput, userId: string): Promise<TodoList> {
     const trimmedName = input.name.trim();
     if (!trimmedName) {
       throw new ValidationError("List name cannot be empty or solely whitespace.");
     }
 
-    return this.repository.create({ name: trimmedName });
+    return this.repository.create({
+      name: trimmedName,
+      userId,
+    });
   }
 
   /**
-   * Renames an existing todo list.
+   * Renames an existing todo list belonging to the authenticated user.
    */
-  async renameList(input: RenameTodoListInput): Promise<TodoList> {
+  async renameList(input: RenameTodoListInput, userId: string): Promise<TodoList> {
     const trimmedName = input.name.trim();
     if (!trimmedName) {
       throw new ValidationError("List name cannot be empty or solely whitespace.");
     }
 
-    const existing = await this.repository.findById(input.id);
+    const existing = await this.repository.findById(input.id, userId);
     if (!existing) {
       throw new NotFoundError(`Todo list with ID ${input.id} was not found.`);
     }
 
-    const updated = await this.repository.updateName(input.id, trimmedName);
+    const updated = await this.repository.updateName(input.id, trimmedName, userId);
     if (!updated) {
       throw new NotFoundError(`Failed to update todo list with ID ${input.id}.`);
     }
@@ -67,8 +80,11 @@ export class TodoListService {
    * Deletes a todo list according to the safe deletion policy.
    * If the list contains tasks and force is false, rejects deletion.
    */
-  async deleteList(input: DeleteTodoListInput): Promise<{ success: boolean; id: string }> {
-    const existing = await this.repository.findById(input.id);
+  async deleteList(
+    input: DeleteTodoListInput,
+    userId: string
+  ): Promise<{ success: boolean; id: string }> {
+    const existing = await this.repository.findById(input.id, userId);
     if (!existing) {
       throw new NotFoundError(`Todo list with ID ${input.id} was not found.`);
     }
@@ -80,7 +96,7 @@ export class TodoListService {
       );
     }
 
-    const deleted = await this.repository.delete(input.id);
+    const deleted = await this.repository.delete(input.id, userId);
     if (!deleted) {
       throw new NotFoundError(`Todo list with ID ${input.id} was not found.`);
     }
@@ -90,4 +106,3 @@ export class TodoListService {
 }
 
 export const todoListService = new TodoListService();
-

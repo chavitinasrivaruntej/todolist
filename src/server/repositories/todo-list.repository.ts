@@ -1,4 +1,4 @@
-import { eq, asc, count } from "drizzle-orm";
+import { eq, and, asc, count } from "drizzle-orm";
 import { db as defaultDb, type Database } from "@/db";
 import { todoLists, type TodoList } from "@/db/schema/lists";
 import { todos } from "@/db/schema/todos";
@@ -6,16 +6,17 @@ import { todos } from "@/db/schema/todos";
 export type TodoListWithTaskCount = TodoList & { taskCount: number };
 
 export interface ITodoListRepository {
-  findAllWithTaskCounts(): Promise<TodoListWithTaskCount[]>;
-  findById(id: string): Promise<TodoList | null>;
-  create(data: { name: string }): Promise<TodoList>;
-  updateName(id: string, name: string): Promise<TodoList | null>;
-  delete(id: string): Promise<boolean>;
+  findAllWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
+  findById(id: string, userId?: string): Promise<TodoList | null>;
+  create(data: { name: string; userId: string }): Promise<TodoList>;
+  updateName(id: string, name: string, userId: string): Promise<TodoList | null>;
+  delete(id: string, userId: string): Promise<boolean>;
   countTasksByListId(id: string): Promise<number>;
 }
 
 /**
  * TodoListRepository handles all database interactions for the 'todo_lists' table.
+ * All operations enforce strict multi-tenant tenant isolation via user ownership (userId).
  */
 export class TodoListRepository implements ITodoListRepository {
   private readonly db: Database;
@@ -24,10 +25,11 @@ export class TodoListRepository implements ITodoListRepository {
     this.db = database;
   }
 
-  async findAllWithTaskCounts(): Promise<TodoListWithTaskCount[]> {
+  async findAllWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]> {
     const rows = await this.db
       .select({
         id: todoLists.id,
+        userId: todoLists.userId,
         name: todoLists.name,
         createdAt: todoLists.createdAt,
         updatedAt: todoLists.updatedAt,
@@ -35,6 +37,7 @@ export class TodoListRepository implements ITodoListRepository {
       })
       .from(todoLists)
       .leftJoin(todos, eq(todos.listId, todoLists.id))
+      .where(eq(todoLists.userId, userId))
       .groupBy(todoLists.id)
       .orderBy(asc(todoLists.createdAt));
 
@@ -44,21 +47,27 @@ export class TodoListRepository implements ITodoListRepository {
     }));
   }
 
-  async findById(id: string): Promise<TodoList | null> {
+  async findById(id: string, userId?: string): Promise<TodoList | null> {
+    const conditions = [eq(todoLists.id, id)];
+    if (userId) {
+      conditions.push(eq(todoLists.userId, userId));
+    }
+
     const [result] = await this.db
       .select()
       .from(todoLists)
-      .where(eq(todoLists.id, id))
+      .where(and(...conditions))
       .limit(1);
 
     return result ?? null;
   }
 
-  async create(data: { name: string }): Promise<TodoList> {
+  async create(data: { name: string; userId: string }): Promise<TodoList> {
     const [created] = await this.db
       .insert(todoLists)
       .values({
         name: data.name,
+        userId: data.userId,
       })
       .returning();
 
@@ -69,23 +78,23 @@ export class TodoListRepository implements ITodoListRepository {
     return created;
   }
 
-  async updateName(id: string, name: string): Promise<TodoList | null> {
+  async updateName(id: string, name: string, userId: string): Promise<TodoList | null> {
     const [updated] = await this.db
       .update(todoLists)
       .set({
         name,
         updatedAt: new Date(),
       })
-      .where(eq(todoLists.id, id))
+      .where(and(eq(todoLists.id, id), eq(todoLists.userId, userId)))
       .returning();
 
     return updated ?? null;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, userId: string): Promise<boolean> {
     const deleted = await this.db
       .delete(todoLists)
-      .where(eq(todoLists.id, id))
+      .where(and(eq(todoLists.id, id), eq(todoLists.userId, userId)))
       .returning({ id: todoLists.id });
 
     return deleted.length > 0;
@@ -102,4 +111,3 @@ export class TodoListRepository implements ITodoListRepository {
 }
 
 export const todoListRepository = new TodoListRepository();
-

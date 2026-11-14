@@ -1,6 +1,6 @@
-# Caize Todo Application — Dual-View Personal Task Manager & Kanban Board with Drag-and-Drop (Phase 3.1)
+# Caize Todo Application — Authenticated Multi-Tenant Task Manager & Dual-View Kanban Board (Phase 4)
 
-A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, dual-view visualization (List & Kanban Board), accessible drag-and-drop task movement, and real-world database persistence with Supabase PostgreSQL.
+A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, multi-tenant user authentication, data isolation, dual-view visualization (List & Kanban Board), accessible drag-and-drop task movement, and real-world database persistence with Supabase PostgreSQL.
 
 ---
 
@@ -12,14 +12,17 @@ Evolved through progressive phases:
 - **Phase 2.1**: Database migration to an RFC 4122 v4 compliant UUID (`00000000-0000-4000-8000-000000000001`) for the default personal list.
 - **Phase 3**: Dual-view experience (List View & Kanban Board View) with per-list view preference persistence via `localStorage`.
 - **Phase 3.1**: Accessible Drag-and-Drop enhancement using `@dnd-kit`, allowing smooth card movement across status columns with pointer, touch, and keyboard sensors.
+- **Phase 4**: User Authentication, Identity & Multi-Tenant Data Ownership using Supabase Auth (`@supabase/ssr`), Next.js Session Middleware, Zero-Trust server-side authorization in tRPC `protectedProcedure`, and PostgreSQL Row-Level Security (RLS).
 
 ### Core Architectural Pillars
 - **Strict Layer Separation**: Presentation, API Transport, Domain Services, Data Access (Repositories), Validations, and Database Schema remain strictly decoupled.
+- **Multi-Tenant Data Ownership**: Strict relational hierarchy: `User (auth.users) → Todo Lists (todo_lists.user_id) → Todos (todos.list_id)`.
+- **Zero-Trust Client Boundary**: The frontend never supplies a `userId`. All mutations and queries resolve identity strictly from verified server-side session context (`ctx.user.id`).
+- **Information Disclosure Defense**: Unauthorized access attempts to other users' lists or tasks always resolve to `NotFoundError` rather than `ForbiddenError`, eliminating UUID existence oracle vectors.
+- **Defense-in-Depth RLS**: Database Row-Level Security policies active on `todo_lists` and `todos` preventing unauthorized access via public anon client keys.
 - **Unified Domain Data**: Both List and Kanban Board views operate on the exact same underlying Todo records and database status enum (`'TODO' | 'IN_PROGRESS' | 'DONE'`).
-- **Drag-and-Drop with Fallback Actions**: Tasks can be moved by dragging or via explicit accessible transition buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`).
-- **Relational Integrity**: Foreign key enforcement (`todos.list_id` → `todo_lists.id`) with PostgreSQL cascade deletes and compound index `(list_id, created_at)`.
-- **Per-List View Preference Persistence**: Uses a resilient client hook backed by `localStorage` to remember whether each list was last viewed in List or Board mode without SSR hydration mismatches.
-- **Automated Test Suite**: 98 automated tests across Vitest covering validations, hooks, services, repositories, tRPC caller pipelines, and interactive UI components.
+- **Drag-and-Drop with Accessible Fallbacks**: Tasks can be moved by dragging or via explicit accessible transition buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`).
+- **112 Automated Vitest Tests**: 100% passing tests covering auth validation, cross-tenant isolation, tRPC procedures, services, repositories, hooks, and React UI components.
 - **Live Supabase PostgreSQL Verification**: Verified live with transaction pooler runtime and session pooler migrations.
 
 ---
@@ -28,94 +31,99 @@ Evolved through progressive phases:
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| **Framework** | [Next.js](https://nextjs.org/) (App Router, Turbopack) | React full-stack framework with React Server Components & Edge/Node routing |
+| **Framework** | [Next.js](https://nextjs.org/) (App Router, Turbopack) | React full-stack framework with React Server Components & middleware routing |
+| **Authentication** | [Supabase Auth](https://supabase.com/docs/guides/auth) + `@supabase/ssr` | User registration, sign in, JWT verification, and secure HTTP-only cookies |
 | **Language** | [TypeScript](https://www.typescriptlang.org/) | Strict mode enabled, zero `any` usage, end-to-end type inference |
-| **API Transport** | [tRPC v11](https://trpc.io/) | Type-safe RPC with automatic client inference and zero code-generation |
+| **API Transport** | [tRPC v11](https://trpc.io/) | Type-safe RPC with automatic client inference and `protectedProcedure` auth guard |
 | **Database ORM** | [Drizzle ORM](https://orm.drizzle.team/) | Lightweight, type-safe SQL query builder and schema management |
-| **Database** | [PostgreSQL (Supabase)](https://supabase.com/) | Real relational database with transaction connection pooling |
-| **Validation** | [Zod](https://zod.dev/) | Single source of truth for client and server input schemas |
+| **Database** | [PostgreSQL (Supabase)](https://supabase.com/) | Real relational database with transaction connection pooling & RLS |
+| **Validation** | [Zod](https://zod.dev/) | Single source of truth for auth, list, and task input schemas |
 | **Styling & UI** | [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Accessible, responsive, minimalist design with neutral palette |
+| **Drag & Drop** | [@dnd-kit](https://dndkit.com/) | Lightweight accessible drag-and-drop toolkit with touch & pointer sensors |
 | **Testing** | [Vitest](https://vitest.dev/) + React Testing Library | Unit, service, repository, tRPC caller, and component testing |
 
 ---
 
-## 3. Architecture & Layer Responsibilities
+## 3. Architecture & Data Flow
 
 ```
-[Presentation Layer] (ListSidebar, TodoDashboard, ViewSwitcher, TodoList, KanbanBoard)
+[Browser / Presentation Layer]
+  ├── /login, /register (Auth Pages & Forms)
+  └── / (TodoDashboard, ListSidebar, ViewSwitcher, TodoList, KanbanBoard, UserMenu)
+         │  (HTTP-only Cookies / Bearer Session)
+         ▼
+[Next.js Middleware] (src/middleware.ts)
+  └── Refreshes session tokens & redirects unauthenticated traffic to /login
          │
          ▼
-[API Layer] (tRPC Routers: todoList, todo)
+[tRPC API Layer] (createTRPCContext + protectedProcedure)
+  ├── Server-side auth verification via Supabase Server Client (ctx.user.id)
+  └── Rejects unauthenticated calls with TRPCError UNAUTHORIZED
          │
          ▼
-[Domain Services] (TodoListService, TodoService)
+[Domain Services Layer] (TodoListService, TodoService)
+  ├── Scopes every operation strictly to ctx.user.id
+  ├── Auto-provisions "Personal" list for new accounts
+  └── Throws domain NotFoundError on cross-tenant access attempts
          │
          ▼
 [Data Access Repositories] (TodoListRepository, TodoRepository)
+  ├── Scoped SQL queries (WHERE user_id = $userId)
+  └── Atomic status updates and task deletions via list_id subqueries
          │
          ▼
-[Database Layer] (Drizzle ORM + Supabase PostgreSQL)
+[PostgreSQL Database] (Supabase)
+  ├── auth.users (Supabase managed user accounts)
+  ├── todo_lists (user_id REFERENCES auth.users(id) ON DELETE CASCADE)
+  ├── todos (list_id REFERENCES todo_lists(id) ON DELETE CASCADE)
+  └── Row-Level Security (RLS) active on all tables
 ```
 
-### Layer Breakdown
+---
 
-1. **Presentation Layer (`src/components/`)**
-   - **`ViewSwitcher`**: Segmented button control toggling between List and Board view modes.
-   - **`KanbanBoard`**: 3-column Kanban workspace (`To Do`, `In Progress`, `Done`) with desktop side-by-side grid and mobile tab bar.
-   - **`KanbanColumn`**: Status column container displaying task counts and empty states.
-   - **`KanbanCard`**: Task card with direct status transition actions (`→ In Progress`, `✓ Done`, `↩ Reopen`), inline delete confirmation, and mutation error retry buttons.
-   - **`TodoList` & `TodoItem`**: Preserved traditional list view with status badges and deletion feedback.
-   - **`TodoForm`**: Always accessible in both views to add tasks with initial status selection.
-   - **`ListSidebar`**: Sidebar navigation displaying all personal lists with task count badges and safe deletion warnings.
+## 4. Database Schema & Migrations
 
-2. **API Layer (`src/server/api/`)**
-   - **`list.router.ts`**: Procedures `todoList.list`, `todoList.create`, `todoList.rename`, `todoList.delete`.
-   - **`todo.router.ts`**: Procedures `todo.list`, `todo.create`, `todo.updateStatus`, `todo.delete`.
-   - **`trpc.ts`**: Centralized error middleware translating application errors (`NotFoundError` → `NOT_FOUND`, `ValidationError` → `BAD_REQUEST`, `DatabaseConfigurationError` → `INTERNAL_SERVER_ERROR`).
+The database schema is managed via Drizzle Kit:
 
-3. **Business Logic Layer (`src/server/services/`)**
-   - **`todo-list.service.ts`**: Enforces list rules, name trimming, and safe deletion policies.
-   - **`todo.service.ts`**: Enforces task creation rules, status updates, and single atomic deletions.
-
-4. **Data Access Layer (`src/server/repositories/`)**
-   - **`todo-list.repository.ts`**: Single efficient `LEFT JOIN ... COUNT(todos.id) GROUP BY todo_lists.id` for list counts, atomic name update, atomic delete with `RETURNING id`.
-   - **`todo.repository.ts`**: Scoped queries `findAllByListId` ordered by `createdAt desc`, atomic `updateStatus`, single atomic `delete` with `RETURNING id`.
-
-5. **Database Layer (`src/db/`)**
-   - **`schema/lists.ts`**: `todo_lists` table (`id` UUID, `name` text, `created_at`, `updated_at`).
-   - **`schema/todos.ts`**: `todos` table (`id` UUID, `list_id` UUID foreign key with `onDelete: cascade`, `title`, `description`, `status` enum `['TODO', 'IN_PROGRESS', 'DONE']`, `created_at`, `updated_at`), with compound index `(list_id, created_at)`.
-   - **`migrations/`**: Drizzle SQL migrations (`0000_futuristic_fixer.sql`, `0001_lucky_alice.sql`, `0002_fix_default_list_uuid.sql`).
+- `0000_futuristic_fixer.sql`: Initial `todos` table.
+- `0001_lucky_alice.sql`: `todo_lists` table, foreign-key relationship, status enum.
+- `0002_fix_default_list_uuid.sql`: Migrated default list ID to RFC 4122 v4 UUID (`00000000-0000-4000-8000-000000000001`).
+- `0003_add_user_ownership.sql`: Added `user_id` foreign key referencing `auth.users(id)`, created indexes `(user_id)` and `(user_id, created_at)`, and enabled Row-Level Security (RLS) policies on `todo_lists` and `todos`.
 
 ---
 
-## 4. Development & Testing Commands
+## 5. Running the Application & Test Suite
 
-| Command | Action |
-|---|---|
-| `npm run dev` | Starts local Next.js development server at `http://localhost:3000` |
-| `npm run build` | Compiles optimized production build with Turbopack |
-| `npm test` | Runs the complete 95-test Vitest test suite |
-| `npx tsx --env-file=.env.local scripts/verify-phase3-live.ts` | Runs the automated live Supabase Phase 3 dual-view suite |
-| `npm run db:generate` | Generates new SQL migration files from Drizzle schemas |
-| `npm run db:migrate` | Applies pending migrations to PostgreSQL |
-| `npm run db:studio` | Opens interactive Drizzle Studio database viewer |
+### Environment Configuration
+Ensure `.env.local` is configured with:
+```env
+NEXT_PUBLIC_SUPABASE_URL="https://[project-ref].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="[anon-key]"
+SUPABASE_SERVICE_ROLE_KEY="[service-role-key]"
+DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-1-[region].pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.[ref]:[password]@aws-1-[region].pooler.supabase.com:5432/postgres"
+```
 
----
+### Development Server
+```bash
+npm run dev
+```
+Visit `http://localhost:3000`. If unauthenticated, you will be redirected to `/login`. You can create an account at `/register` or sign in.
 
-## 5. Dual-View Features & UX Design
+### Run Automated Tests
+```bash
+npm test
+```
+Executes all 112 automated Vitest tests across 15 test suites.
 
-### A. Independent View Preference Persistence
-- Each list remembers its own view preference via `useListViewPreference` backed by browser `localStorage`.
-- When switching between lists (e.g. *College* in Board view and *Personal* in List view), each list automatically restores its saved view.
-- Safe SSR handling ensures zero hydration mismatch warnings on initial page load.
+### Type Check & Production Build
+```bash
+npx tsc --noEmit
+npm run build
+```
 
-### B. Accessible Status Transition Controls
-- Card controls provide instant status transitions without requiring fragile drag-and-drop gestures:
-  - From **To Do**: `→ In Progress`, `✓ Done`
-  - From **In Progress**: `← To Do`, `✓ Done`
-  - From **Done**: `↩ Reopen`, `← In Progress`
-- Status mutation failures keep the task in its current column, display an inline error alert, and provide a one-click `Retry` button.
-
-### C. Responsive Mobile Design
-- **Desktop ($\ge 768\text{px}$)**: 3-column side-by-side grid.
-- **Mobile ($< 768\text{px}$)**: Accessible tab bar (`[To Do (N)] [In Progress (N)] [Done (N)]`) allows comfortable single-column focus without cramped horizontal overflow.
+### Live Supabase Multi-Tenant Verification Script
+```bash
+npx tsx scripts/verify-phase4-live.ts
+```
+Creates two test accounts on Supabase, verifies cross-tenant isolation and zero-trust rejections, and cleans up after completion.

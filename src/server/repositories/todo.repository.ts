@@ -1,6 +1,7 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { db as defaultDb, type Database } from "@/db";
 import { todos, type Todo, type TodoStatus } from "@/db/schema/todos";
+import { todoLists } from "@/db/schema/lists";
 
 export interface ITodoRepository {
   findAllByListId(listId: string): Promise<Todo[]>;
@@ -11,12 +12,14 @@ export interface ITodoRepository {
     description?: string | null;
     status?: TodoStatus;
   }): Promise<Todo>;
-  updateStatus(id: string, status: TodoStatus): Promise<Todo | null>;
-  delete(id: string): Promise<boolean>;
+  updateStatus(id: string, status: TodoStatus, userId?: string): Promise<Todo | null>;
+  delete(id: string, userId?: string): Promise<boolean>;
 }
 
 /**
  * TodoRepository provides an abstracted data-access layer for the 'todos' table.
+ * All mutations enforce multi-tenant authorization by scoping task updates/deletions
+ * to lists owned by the specified user (userId).
  */
 export class TodoRepository implements ITodoRepository {
   private readonly db: Database;
@@ -66,23 +69,41 @@ export class TodoRepository implements ITodoRepository {
     return created;
   }
 
-  async updateStatus(id: string, status: TodoStatus): Promise<Todo | null> {
+  async updateStatus(id: string, status: TodoStatus, userId?: string): Promise<Todo | null> {
+    const conditions = [eq(todos.id, id)];
+    if (userId) {
+      const userListIds = this.db
+        .select({ id: todoLists.id })
+        .from(todoLists)
+        .where(eq(todoLists.userId, userId));
+      conditions.push(inArray(todos.listId, userListIds));
+    }
+
     const [updated] = await this.db
       .update(todos)
       .set({
         status,
         updatedAt: new Date(),
       })
-      .where(eq(todos.id, id))
+      .where(and(...conditions))
       .returning();
 
     return updated ?? null;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, userId?: string): Promise<boolean> {
+    const conditions = [eq(todos.id, id)];
+    if (userId) {
+      const userListIds = this.db
+        .select({ id: todoLists.id })
+        .from(todoLists)
+        .where(eq(todoLists.userId, userId));
+      conditions.push(inArray(todos.listId, userListIds));
+    }
+
     const deleted = await this.db
       .delete(todos)
-      .where(eq(todos.id, id))
+      .where(and(...conditions))
       .returning({ id: todos.id });
 
     return deleted.length > 0;

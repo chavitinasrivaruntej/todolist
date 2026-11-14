@@ -7,6 +7,13 @@ async function runPhase3LiveVerification() {
 
   const caller = appRouter.createCaller({
     headers: undefined,
+    user: {
+      id: "00000000-0000-4000-8000-000000000001",
+      app_metadata: {},
+      user_metadata: {},
+      aud: "authenticated",
+      created_at: new Date().toISOString(),
+    },
   });
 
   // Step 1: Query existing lists

@@ -3,11 +3,21 @@ import { appRouter } from "@/server/api/root";
 import { todoService } from "@/server/services/todo.service";
 import { NotFoundError, ValidationError } from "@/server/errors";
 import { TRPCError } from "@trpc/server";
+import type { User } from "@supabase/supabase-js";
 
 describe("tRPC API: Todo Router", () => {
-  const createCaller = () =>
+  const mockUser: User = {
+    id: "user-1234-abcd",
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  };
+
+  const createCaller = (user: User | null = mockUser) =>
     appRouter.createCaller({
       headers: undefined,
+      user,
     });
 
   const sampleListId = "123e4567-e89b-42d3-a456-426614174001";
@@ -25,6 +35,17 @@ describe("tRPC API: Todo Router", () => {
     vi.restoreAllMocks();
   });
 
+  describe("authentication guard", () => {
+    it("should reject unauthenticated calls with UNAUTHORIZED", async () => {
+      const unauthedCaller = createCaller(null);
+      await expect(
+        unauthedCaller.todo.list({ listId: sampleListId })
+      ).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
+    });
+  });
+
   describe("todo.list", () => {
     it("should return the list of todos for a specific listId from service", async () => {
       vi.spyOn(todoService, "getTodosByList").mockResolvedValue([sampleTodo]);
@@ -32,7 +53,10 @@ describe("tRPC API: Todo Router", () => {
       const caller = createCaller();
       const result = await caller.todo.list({ listId: sampleListId });
 
-      expect(todoService.getTodosByList).toHaveBeenCalledWith({ listId: sampleListId });
+      expect(todoService.getTodosByList).toHaveBeenCalledWith(
+        { listId: sampleListId },
+        mockUser.id
+      );
       expect(result).toEqual([sampleTodo]);
     });
 
@@ -43,7 +67,10 @@ describe("tRPC API: Todo Router", () => {
       const caller = createCaller();
       const result = await caller.todo.list({ listId: defaultListId });
 
-      expect(todoService.getTodosByList).toHaveBeenCalledWith({ listId: defaultListId });
+      expect(todoService.getTodosByList).toHaveBeenCalledWith(
+        { listId: defaultListId },
+        mockUser.id
+      );
       expect(result).toEqual([]);
     });
 
@@ -57,7 +84,7 @@ describe("tRPC API: Todo Router", () => {
   });
 
   describe("todo.create", () => {
-    it("should validate input schema and create a todo", async () => {
+    it("should validate input schema and create a todo scoped to user", async () => {
       vi.spyOn(todoService, "createTodo").mockResolvedValue(sampleTodo);
 
       const caller = createCaller();
@@ -68,12 +95,15 @@ describe("tRPC API: Todo Router", () => {
         status: "TODO",
       });
 
-      expect(todoService.createTodo).toHaveBeenCalledWith({
-        listId: sampleListId,
-        title: "Integration Task",
-        description: "Testing tRPC procedures",
-        status: "TODO",
-      });
+      expect(todoService.createTodo).toHaveBeenCalledWith(
+        {
+          listId: sampleListId,
+          title: "Integration Task",
+          description: "Testing tRPC procedures",
+          status: "TODO",
+        },
+        mockUser.id
+      );
       expect(result).toEqual(sampleTodo);
     });
 
@@ -118,10 +148,13 @@ describe("tRPC API: Todo Router", () => {
         status: "IN_PROGRESS",
       });
 
-      expect(todoService.updateStatus).toHaveBeenCalledWith({
-        id: sampleTodo.id,
-        status: "IN_PROGRESS",
-      });
+      expect(todoService.updateStatus).toHaveBeenCalledWith(
+        {
+          id: sampleTodo.id,
+          status: "IN_PROGRESS",
+        },
+        mockUser.id
+      );
       expect(result).toEqual(updatedTodo);
     });
   });
@@ -138,9 +171,12 @@ describe("tRPC API: Todo Router", () => {
         id: sampleTodo.id,
       });
 
-      expect(todoService.deleteTodo).toHaveBeenCalledWith({
-        id: sampleTodo.id,
-      });
+      expect(todoService.deleteTodo).toHaveBeenCalledWith(
+        {
+          id: sampleTodo.id,
+        },
+        mockUser.id
+      );
       expect(result).toEqual({
         success: true,
         id: sampleTodo.id,
