@@ -18,3 +18,4 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|api/trpc|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
+

@@ -216,3 +216,4 @@ runPhase4LiveVerification().catch((err) => {
   console.error("Verification failed with error:", err);
   process.exit(1);
 });
+
