@@ -13,9 +13,10 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - api/trpc (tRPC procedures handle authentication on the API layer returning JSON UNAUTHORIZED)
+     * - api/auth (OAuth callbacks handle session exchange)
      * - image/asset static files
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/trpc|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/trpc|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
 
