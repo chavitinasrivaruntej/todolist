@@ -17,3 +17,4 @@ export const todoLists = pgTable("todo_lists", {
 
 export type TodoList = typeof todoLists.$inferSelect;
 export type NewTodoList = typeof todoLists.$inferInsert;
+

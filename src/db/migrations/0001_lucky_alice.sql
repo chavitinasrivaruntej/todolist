@@ -7,11 +7,11 @@ CREATE TABLE "todo_lists" (
 );
 --> statement-breakpoint
 INSERT INTO "todo_lists" ("id", "name") 
-VALUES ('00000000-0000-0000-0000-000000000001', 'Personal') 
+VALUES ('00000000-0000-4000-8000-000000000001', 'Personal') 
 ON CONFLICT ("id") DO NOTHING;
 --> statement-breakpoint
 ALTER TABLE "todos" ADD COLUMN "list_id" uuid;--> statement-breakpoint
-UPDATE "todos" SET "list_id" = '00000000-0000-0000-0000-000000000001' WHERE "list_id" IS NULL;--> statement-breakpoint
+UPDATE "todos" SET "list_id" = '00000000-0000-4000-8000-000000000001' WHERE "list_id" IS NULL;--> statement-breakpoint
 ALTER TABLE "todos" ALTER COLUMN "list_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "todos" ADD COLUMN "status" "todo_status" DEFAULT 'TODO' NOT NULL;--> statement-breakpoint
 ALTER TABLE "todos" ADD CONSTRAINT "todos_list_id_todo_lists_id_fk" FOREIGN KEY ("list_id") REFERENCES "public"."todo_lists"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

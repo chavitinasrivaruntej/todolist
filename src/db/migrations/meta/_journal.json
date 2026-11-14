@@ -15,6 +15,13 @@
       "when": 1794674181227,
       "tag": "0001_lucky_alice",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794676500000,
+      "tag": "0002_fix_default_list_uuid",
+      "breakpoints": true
     }
   ]
 }

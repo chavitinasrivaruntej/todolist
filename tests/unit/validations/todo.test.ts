@@ -124,6 +124,23 @@ describe("Validation Schemas: Todo", () => {
       expect(result.success).toBe(true);
     });
 
+    it("regression: should accept migrated default personal list ID (00000000-0000-4000-8000-000000000001)", () => {
+      const result = getTodosByListSchema.safeParse({
+        listId: "00000000-0000-4000-8000-000000000001",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("regression: should reject legacy invalid non-RFC list ID (00000000-0000-0000-0000-000000000001)", () => {
+      const result = getTodosByListSchema.safeParse({
+        listId: "00000000-0000-0000-0000-000000000001",
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toBe("Invalid list ID format");
+      }
+    });
+
     it("should reject malformed listId", () => {
       const result = getTodosByListSchema.safeParse({
         listId: "bad-id",

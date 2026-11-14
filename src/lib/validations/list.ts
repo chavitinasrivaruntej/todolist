@@ -36,3 +36,4 @@ export const deleteTodoListSchema = z.object({
 export type CreateTodoListInput = z.infer<typeof createTodoListSchema>;
 export type RenameTodoListInput = z.infer<typeof renameTodoListSchema>;
 export type DeleteTodoListInput = z.infer<typeof deleteTodoListSchema>;
+

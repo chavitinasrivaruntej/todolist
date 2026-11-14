@@ -36,6 +36,17 @@ describe("tRPC API: Todo Router", () => {
       expect(result).toEqual([sampleTodo]);
     });
 
+    it("regression: should accept migrated default list ID without Zod validation failure", async () => {
+      const defaultListId = "00000000-0000-4000-8000-000000000001";
+      vi.spyOn(todoService, "getTodosByList").mockResolvedValue([]);
+
+      const caller = createCaller();
+      const result = await caller.todo.list({ listId: defaultListId });
+
+      expect(todoService.getTodosByList).toHaveBeenCalledWith({ listId: defaultListId });
+      expect(result).toEqual([]);
+    });
+
     it("should reject non-UUID listId with BAD_REQUEST", async () => {
       const caller = createCaller();
 

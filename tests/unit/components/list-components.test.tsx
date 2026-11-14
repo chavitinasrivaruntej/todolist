@@ -180,3 +180,4 @@ describe("ListSidebar Component", () => {
     expect(mockDeleteMutate).toHaveBeenCalledWith({ id: "list-2", force: true });
   });
 });
+

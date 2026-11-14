@@ -13,7 +13,40 @@ async function runLiveVerification() {
   // Step 1: Initial lists query
   console.log("\n[Step 1] Querying existing lists...");
   const initialLists = await caller.todoList.list();
-  console.log(`Found ${initialLists.length} existing list(s):`, initialLists.map((l) => `${l.name} (${l.taskCount} tasks)`));
+  console.log(`Found ${initialLists.length} existing list(s):`, initialLists.map((l) => `${l.name} (${l.taskCount} tasks, ID: ${l.id})`));
+
+  // Step 1b: Verify Migrated Default Personal List ID & Task Loading
+  console.log("\n[Step 1b] Verifying migrated default 'Personal' list...");
+  const personalList = initialLists.find((l) => l.name === "Personal");
+  if (!personalList) {
+    throw new Error("Assertion failed: Default 'Personal' list was not found in database.");
+  }
+  if (personalList.id !== "00000000-0000-4000-8000-000000000001") {
+    throw new Error(`Assertion failed: Expected Personal list ID to be '00000000-0000-4000-8000-000000000001', got '${personalList.id}'`);
+  }
+  console.log(`  ✓ Personal list ID is valid RFC 4122 v4 UUID: ${personalList.id}`);
+
+  console.log("  Testing task loading for Personal list via todo.list()...");
+  const personalTasks = await caller.todo.list({ listId: personalList.id });
+  console.log(`  ✓ Task loading query SUCCEEDED! Loaded ${personalTasks.length} task(s) without Zod validation rejection.`);
+
+  console.log("  Testing adding a task to Personal list...");
+  const samplePersonalTask = await caller.todo.create({
+    listId: personalList.id,
+    title: "Verify Default List Works",
+    description: "Regression test for RFC 4122 default UUID",
+    status: "TODO",
+  });
+  console.log(`  ✓ Task created in Personal list with ID: ${samplePersonalTask.id}`);
+
+  const personalTasksAfterAdd = await caller.todo.list({ listId: personalList.id });
+  if (personalTasksAfterAdd.length !== personalTasks.length + 1) {
+    throw new Error("Assertion failed: Personal list tasks count did not increment.");
+  }
+
+  // Clean up the sample task from Personal list
+  await caller.todo.delete({ id: samplePersonalTask.id });
+  console.log("  ✓ Cleaned up test task from Personal list.");
 
   // Step 2: Create two lists ("Phase2-College" and "Phase2-Projects")
   console.log("\n[Step 2] Creating test lists 'Phase2-College' and 'Phase2-Projects'...");
