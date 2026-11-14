@@ -34,3 +34,4 @@ describe("ViewSwitcher Component", () => {
     expect(handleViewChange).toHaveBeenCalledWith("board");
   });
 });
+

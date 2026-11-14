@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useDroppable } from "@dnd-kit/core";
 import { type TodoStatusType } from "@/lib/validations/todo";
 import { KanbanCard, type TodoListItem } from "@/components/todos/kanban/kanban-card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,11 @@ interface KanbanColumnProps {
 }
 
 export function KanbanColumn({ status, title, todos, listId }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: status,
+    data: { status },
+  });
+
   const getStatusIcon = (status: TodoStatusType) => {
     switch (status) {
       case "TODO":
@@ -38,7 +44,14 @@ export function KanbanColumn({ status, title, todos, listId }: KanbanColumnProps
   };
 
   return (
-    <div className="flex flex-col rounded-xl border border-neutral-200/80 bg-neutral-50/60 p-3 dark:border-neutral-800 dark:bg-neutral-900/30 min-h-[360px]">
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col rounded-xl border p-3 min-h-[360px] transition-all duration-200 ${
+        isOver
+          ? "border-neutral-400 bg-neutral-100/90 dark:border-neutral-600 dark:bg-neutral-800/50 ring-2 ring-neutral-400/40 dark:ring-neutral-600/40"
+          : "border-neutral-200/80 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-900/30"
+      }`}
+    >
       {/* Column Header */}
       <div className="flex items-center justify-between pb-3 mb-2 border-b border-neutral-200/60 dark:border-neutral-800/60">
         <div className="flex items-center gap-2">
@@ -57,12 +70,18 @@ export function KanbanColumn({ status, title, todos, listId }: KanbanColumnProps
       </div>
 
       {/* Column Body / Tasks Stack */}
-      <div className="flex-1 space-y-2.5 overflow-y-auto">
+      <div className="flex-1 space-y-2.5 overflow-y-auto min-h-[100px]">
         {todos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 rounded-lg border border-dashed border-neutral-200/70 p-4 text-center dark:border-neutral-800/70">
+          <div
+            className={`flex flex-col items-center justify-center h-48 rounded-lg border border-dashed p-4 text-center transition-colors ${
+              isOver
+                ? "border-neutral-400/80 bg-neutral-200/40 dark:border-neutral-600/80 dark:bg-neutral-800/40"
+                : "border-neutral-200/70 dark:border-neutral-800/70"
+            }`}
+          >
             <Inbox className="h-5 w-5 text-neutral-300 dark:text-neutral-600 mb-1" />
             <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
-              No tasks {title.toLowerCase()}
+              {isOver ? `Drop to move to ${title}` : `No tasks ${title.toLowerCase()}`}
             </p>
           </div>
         ) : (

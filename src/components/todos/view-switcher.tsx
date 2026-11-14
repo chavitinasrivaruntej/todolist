@@ -48,3 +48,4 @@ export function ViewSwitcher({ currentView, onViewChange }: ViewSwitcherProps) {
     </div>
   );
 }
+

@@ -1,10 +1,23 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  TouchSensor,
+  useSensors,
+  useSensor,
+  closestCorners,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { trpc } from "@/lib/trpc/client";
 import { KanbanColumn } from "@/components/todos/kanban/kanban-column";
+import { KanbanCard, type TodoListItem } from "@/components/todos/kanban/kanban-card";
 import { Button } from "@/components/ui/button";
-import { type TodoStatusType } from "@/lib/validations/todo";
+import { type TodoStatusType, TODO_STATUSES } from "@/lib/validations/todo";
 import { AlertCircle, RefreshCw, CheckSquare } from "lucide-react";
 
 interface KanbanBoardProps {
@@ -13,6 +26,9 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ listId }: KanbanBoardProps) {
   const [mobileTab, setMobileTab] = useState<TodoStatusType>("TODO");
+  const [activeTodo, setActiveTodo] = useState<TodoListItem | null>(null);
+
+  const utils = trpc.useUtils();
 
   const {
     data: todos,
@@ -22,6 +38,38 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
     refetch,
   } = trpc.todo.list.useQuery({ listId });
 
+  const updateStatusMutation = trpc.todo.updateStatus.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.todo.list.invalidate({ listId }),
+        utils.todoList.list.invalidate(),
+      ]);
+    },
+    onError: (err) => {
+      // Failure leaves card in original column and triggers refetch to restore state
+      utils.todo.list.invalidate({ listId });
+    },
+  });
+
+  // Configure accessible sensors:
+  // - PointerSensor requires 8px drag distance so normal button clicks are never interrupted
+  // - TouchSensor uses 200ms hold delay so vertical scrolling is not hijacked on mobile
+  // - KeyboardSensor enables keyboard navigation for accessibility
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 6,
+      },
+    }),
+    useSensor(KeyboardSensor)
+  );
+
   const columns = useMemo(() => {
     return {
       TODO: todos?.filter((t) => t.status === "TODO") ?? [],
@@ -29,6 +77,40 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
       DONE: todos?.filter((t) => t.status === "DONE") ?? [],
     };
   }, [todos]);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const task = todos?.find((t) => t.id === active.id) ?? null;
+    setActiveTodo(task);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTodo(null);
+
+    if (!over) return;
+
+    // Target status can come from column droppable ID or data
+    const targetStatus = (over.data.current?.status ?? over.id) as TodoStatusType;
+
+    // Validate target is one of the valid statuses
+    if (!TODO_STATUSES.includes(targetStatus)) return;
+
+    const sourceTask = todos?.find((t) => t.id === active.id);
+    if (!sourceTask) return;
+
+    // Only mutate if dropped on a different status column
+    if (sourceTask.status !== targetStatus) {
+      updateStatusMutation.mutate({
+        id: sourceTask.id,
+        status: targetStatus,
+      });
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveTodo(null);
+  };
 
   if (isLoading) {
     return (
@@ -85,85 +167,100 @@ export function KanbanBoard({ listId }: KanbanBoardProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Mobile Column Navigation Tabs (visible only on mobile viewports < md) */}
-      <div
-        className="flex md:hidden items-center justify-between rounded-lg border border-neutral-200 bg-neutral-100/70 p-1 dark:border-neutral-800 dark:bg-neutral-900/60"
-        role="tablist"
-        aria-label="Kanban status column tabs"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mobileTab === "TODO"}
-          onClick={() => setMobileTab("TODO")}
-          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
-            mobileTab === "TODO"
-              ? "bg-white text-neutral-900 shadow-xs dark:bg-neutral-800 dark:text-neutral-50 font-semibold"
-              : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
-          }`}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="space-y-3">
+        {/* Mobile Column Navigation Tabs (visible only on mobile viewports < md) */}
+        <div
+          className="flex md:hidden items-center justify-between rounded-lg border border-neutral-200 bg-neutral-100/70 p-1 dark:border-neutral-800 dark:bg-neutral-900/60"
+          role="tablist"
+          aria-label="Kanban status column tabs"
         >
-          To Do ({columns.TODO.length})
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === "TODO"}
+            onClick={() => setMobileTab("TODO")}
+            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
+              mobileTab === "TODO"
+                ? "bg-white text-neutral-900 shadow-xs dark:bg-neutral-800 dark:text-neutral-50 font-semibold"
+                : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
+            }`}
+          >
+            To Do ({columns.TODO.length})
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mobileTab === "IN_PROGRESS"}
-          onClick={() => setMobileTab("IN_PROGRESS")}
-          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
-            mobileTab === "IN_PROGRESS"
-              ? "bg-white text-blue-700 shadow-xs dark:bg-neutral-800 dark:text-blue-300 font-semibold"
-              : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
-          }`}
-        >
-          In Progress ({columns.IN_PROGRESS.length})
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === "IN_PROGRESS"}
+            onClick={() => setMobileTab("IN_PROGRESS")}
+            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
+              mobileTab === "IN_PROGRESS"
+                ? "bg-white text-blue-700 shadow-xs dark:bg-neutral-800 dark:text-blue-300 font-semibold"
+                : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
+            }`}
+          >
+            In Progress ({columns.IN_PROGRESS.length})
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mobileTab === "DONE"}
-          onClick={() => setMobileTab("DONE")}
-          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
-            mobileTab === "DONE"
-              ? "bg-white text-green-700 shadow-xs dark:bg-neutral-800 dark:text-green-300 font-semibold"
-              : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
-          }`}
-        >
-          Done ({columns.DONE.length})
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === "DONE"}
+            onClick={() => setMobileTab("DONE")}
+            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all text-center ${
+              mobileTab === "DONE"
+                ? "bg-white text-green-700 shadow-xs dark:bg-neutral-800 dark:text-green-300 font-semibold"
+                : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
+            }`}
+          >
+            Done ({columns.DONE.length})
+          </button>
+        </div>
+
+        {/* Kanban Columns Grid (On desktop: 3-column grid; On mobile: shows active mobileTab column) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`md:block ${mobileTab === "TODO" ? "block" : "hidden"}`}>
+            <KanbanColumn
+              status="TODO"
+              title="To Do"
+              todos={columns.TODO}
+              listId={listId}
+            />
+          </div>
+
+          <div className={`md:block ${mobileTab === "IN_PROGRESS" ? "block" : "hidden"}`}>
+            <KanbanColumn
+              status="IN_PROGRESS"
+              title="In Progress"
+              todos={columns.IN_PROGRESS}
+              listId={listId}
+            />
+          </div>
+
+          <div className={`md:block ${mobileTab === "DONE" ? "block" : "hidden"}`}>
+            <KanbanColumn
+              status="DONE"
+              title="Done"
+              todos={columns.DONE}
+              listId={listId}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Kanban Columns Grid (On desktop: 3-column grid; On mobile: shows active mobileTab column) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className={`md:block ${mobileTab === "TODO" ? "block" : "hidden"}`}>
-          <KanbanColumn
-            status="TODO"
-            title="To Do"
-            todos={columns.TODO}
-            listId={listId}
-          />
-        </div>
-
-        <div className={`md:block ${mobileTab === "IN_PROGRESS" ? "block" : "hidden"}`}>
-          <KanbanColumn
-            status="IN_PROGRESS"
-            title="In Progress"
-            todos={columns.IN_PROGRESS}
-            listId={listId}
-          />
-        </div>
-
-        <div className={`md:block ${mobileTab === "DONE" ? "block" : "hidden"}`}>
-          <KanbanColumn
-            status="DONE"
-            title="Done"
-            todos={columns.DONE}
-            listId={listId}
-          />
-        </div>
-      </div>
-    </div>
+      {/* Floating Drag Overlay */}
+      <DragOverlay dropAnimation={null}>
+        {activeTodo ? (
+          <KanbanCard todo={activeTodo} listId={listId} isOverlay />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }

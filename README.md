@@ -1,20 +1,25 @@
-# Caize Todo Application — Dual-View Personal Task Manager & Kanban Board (Phase 3)
+# Caize Todo Application — Dual-View Personal Task Manager & Kanban Board with Drag-and-Drop (Phase 3.1)
 
-A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, dual-view visualization (List & Kanban Board), and real-world database persistence with Supabase PostgreSQL.
+A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, maintainability, clean domain design, dual-view visualization (List & Kanban Board), accessible drag-and-drop task movement, and real-world database persistence with Supabase PostgreSQL.
 
 ---
 
 ## 1. Project Overview & Evolution
 
-Evolved from a multi-list task manager (Phase 2) into a **dual-view productivity workspace (Phase 3)**. Users can seamlessly switch between a traditional **List View** and a 3-column **Kanban Board View** within each personal Todo list, with independent view preferences preserved across lists.
+Evolved through progressive phases:
+- **Phase 1**: Core architecture, single-list foundation, Zod validation, and decoupled layers.
+- **Phase 2**: Multi-list personal management, foreign-key cascade integrity, task status enum (`TODO`, `IN_PROGRESS`, `DONE`), and safe deletion policies.
+- **Phase 2.1**: Database migration to an RFC 4122 v4 compliant UUID (`00000000-0000-4000-8000-000000000001`) for the default personal list.
+- **Phase 3**: Dual-view experience (List View & Kanban Board View) with per-list view preference persistence via `localStorage`.
+- **Phase 3.1**: Accessible Drag-and-Drop enhancement using `@dnd-kit`, allowing smooth card movement across status columns with pointer, touch, and keyboard sensors.
 
 ### Core Architectural Pillars
 - **Strict Layer Separation**: Presentation, API Transport, Domain Services, Data Access (Repositories), Validations, and Database Schema remain strictly decoupled.
 - **Unified Domain Data**: Both List and Kanban Board views operate on the exact same underlying Todo records and database status enum (`'TODO' | 'IN_PROGRESS' | 'DONE'`).
+- **Drag-and-Drop with Fallback Actions**: Tasks can be moved by dragging or via explicit accessible transition buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`).
 - **Relational Integrity**: Foreign key enforcement (`todos.list_id` → `todo_lists.id`) with PostgreSQL cascade deletes and compound index `(list_id, created_at)`.
 - **Per-List View Preference Persistence**: Uses a resilient client hook backed by `localStorage` to remember whether each list was last viewed in List or Board mode without SSR hydration mismatches.
-- **Accessible Kanban Navigation**: Dedicated status transition action buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`) and an accessible mobile tab switcher for responsive column navigation.
-- **Automated Test Suite**: 95 automated tests across Vitest covering validations, hooks, services, repositories, tRPC caller pipelines, and interactive UI components.
+- **Automated Test Suite**: 98 automated tests across Vitest covering validations, hooks, services, repositories, tRPC caller pipelines, and interactive UI components.
 - **Live Supabase PostgreSQL Verification**: Verified live with transaction pooler runtime and session pooler migrations.
 
 ---

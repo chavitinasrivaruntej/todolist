@@ -26,7 +26,7 @@ vi.mock("@/lib/trpc/client", () => ({
   },
 }));
 
-describe("KanbanBoard Component", () => {
+describe("KanbanBoard Component with Drag-and-Drop Enhancement", () => {
   const mockUpdateStatus = vi.fn();
   const mockDelete = vi.fn();
   const mockInvalidate = vi.fn();
@@ -36,7 +36,7 @@ describe("KanbanBoard Component", () => {
       id: "123e4567-e89b-42d3-a456-426614174001",
       listId: "list-1",
       title: "Write documentation",
-      description: "Document Phase 3 Kanban architecture",
+      description: "Document Phase 3.1 Kanban drag-and-drop architecture",
       status: "TODO" as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -102,6 +102,20 @@ describe("KanbanBoard Component", () => {
     expect(screen.getByText("Configure Supabase pooler")).toBeInTheDocument();
   });
 
+  it("should provide drag-and-drop accessibility attributes on draggable cards", () => {
+    vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
+      data: [sampleTasks[0]],
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof trpc.todo.list.useQuery>);
+
+    render(<KanbanBoard listId="list-1" />);
+
+    const card = screen.getByLabelText(/Task: Write documentation, status: TODO/i);
+    expect(card).toBeInTheDocument();
+    expect(card).toHaveAttribute("tabindex", "0");
+  });
+
   it("should render global empty state when list has 0 tasks", () => {
     vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
       data: [],
@@ -114,9 +128,9 @@ describe("KanbanBoard Component", () => {
     expect(screen.getByText("No tasks in this list yet")).toBeInTheDocument();
   });
 
-  it("should trigger updateStatus mutation when clicking quick-move button from To Do to In Progress", () => {
+  it("should preserve accessible status transition button clicks without accidental drag", () => {
     vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
-      data: [sampleTasks[0]], // only the TODO task
+      data: [sampleTasks[0]], // TODO task
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof trpc.todo.list.useQuery>);
@@ -134,7 +148,7 @@ describe("KanbanBoard Component", () => {
 
   it("should trigger updateStatus mutation when moving from In Progress to Done", () => {
     vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
-      data: [sampleTasks[1]], // only the IN_PROGRESS task
+      data: [sampleTasks[1]], // IN_PROGRESS task
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof trpc.todo.list.useQuery>);
@@ -147,6 +161,24 @@ describe("KanbanBoard Component", () => {
     expect(mockUpdateStatus).toHaveBeenCalledWith({
       id: sampleTasks[1]?.id,
       status: "DONE",
+    });
+  });
+
+  it("should trigger updateStatus mutation when reopening a Done task back to To Do", () => {
+    vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
+      data: [sampleTasks[2]], // DONE task
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof trpc.todo.list.useQuery>);
+
+    render(<KanbanBoard listId="list-1" />);
+
+    const reopenBtn = screen.getByRole("button", { name: /Reopen/i });
+    fireEvent.click(reopenBtn);
+
+    expect(mockUpdateStatus).toHaveBeenCalledWith({
+      id: sampleTasks[2]?.id,
+      status: "TODO",
     });
   });
 
@@ -204,5 +236,20 @@ describe("KanbanBoard Component", () => {
     fireEvent.click(deleteBtn);
 
     expect(mockDelete).toHaveBeenCalledWith({ id: sampleTasks[0]?.id });
+  });
+
+  it("should switch visible mobile column when clicking mobile tabs", () => {
+    vi.mocked(trpc.todo.list.useQuery).mockReturnValue({
+      data: sampleTasks,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof trpc.todo.list.useQuery>);
+
+    render(<KanbanBoard listId="list-1" />);
+
+    const inProgressTab = screen.getByRole("tab", { name: /In Progress \(1\)/i });
+    fireEvent.click(inProgressTab);
+
+    expect(inProgressTab).toHaveAttribute("aria-selected", "true");
   });
 });
