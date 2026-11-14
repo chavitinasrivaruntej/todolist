@@ -41,3 +41,4 @@ export class DatabaseConfigurationError extends AppError {
     super(message);
   }
 }
+
