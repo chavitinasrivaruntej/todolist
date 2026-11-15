@@ -17,7 +17,7 @@ import {
   type GetTodosByListInput,
   type UpdateTodoStatusInput,
 } from "@/lib/validations/todo";
-import { type Todo, type TodoStatus } from "@/db/schema/todos";
+import { type Todo, type TodoStatus, type TodoPriority } from "@/db/schema/todos";
 import { NotFoundError, ValidationError } from "@/server/errors";
 
 export interface CreateTodoServiceInput {
@@ -25,12 +25,16 @@ export interface CreateTodoServiceInput {
   title: string;
   description?: string | null;
   status?: TodoStatus;
+  priority?: TodoPriority;
+  dueDate?: string | null;
 }
 
 export interface UpdateTodoDetailsServiceInput {
   id: string;
   title?: string;
   description?: string | null;
+  priority?: TodoPriority;
+  dueDate?: string | null;
 }
 
 /**
@@ -56,15 +60,24 @@ export class TodoService {
   }
 
   /**
-   * Retrieves all todo items belonging to a specific list.
+   * Retrieves todo items belonging to a specific list.
    * Allowed for OWNER, EDITOR, and VIEWER roles.
+   * Supports search, status, priority, due date filtering, and deterministic multi-key sorting.
    */
   async getTodosByList(
     input: GetTodosByListInput,
     userId: string
   ): Promise<Todo[]> {
     await this.permissionService.requireCanReadList(userId, input.listId);
-    return this.repository.findAllByListId(input.listId);
+    return this.repository.findAllByListId(input.listId, {
+      search: input.search,
+      status: input.status,
+      priority: input.priority,
+      dueFilter: input.dueFilter ?? "ALL",
+      sortBy: input.sortBy ?? "created",
+      sortDirection: input.sortDirection ?? "desc",
+      clientToday: input.clientToday,
+    });
   }
 
   /**
@@ -90,6 +103,8 @@ export class TodoService {
         title: trimmedTitle,
         description: input.description ?? null,
         status: input.status ?? "TODO",
+        priority: input.priority ?? "MEDIUM",
+        dueDate: input.dueDate ?? null,
       };
 
       const created = tx
@@ -106,6 +121,8 @@ export class TodoService {
           metadata: {
             title: created.title,
             status: created.status,
+            priority: created.priority,
+            dueDate: created.dueDate ?? null,
           },
         },
         tx
@@ -130,6 +147,16 @@ export class TodoService {
 
     await this.permissionService.requireCanMutateTodos(userId, listId);
 
+    const existing = await this.repository.findById(input.id);
+    if (!existing) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
+    // No-op if status is unchanged
+    if (existing.status === input.status) {
+      return existing;
+    }
+
     return withTransaction(this.db, async (tx) => {
       const updated = tx
         ? await this.repository.updateStatus(input.id, input.status, tx)
@@ -148,7 +175,7 @@ export class TodoService {
           entityId: updated.id,
           metadata: {
             title: updated.title,
-            previousStatus: "TODO",
+            previousStatus: existing.status,
             newStatus: updated.status,
           },
         },
@@ -160,7 +187,9 @@ export class TodoService {
   }
 
   /**
-   * Updates the title or description of a Todo item atomically with its activity log.
+   * Updates the title, description, priority, or due date of a Todo item atomically.
+   * Suppresses database writes and activity logs when no values have changed.
+   * Records previous and new values for priority and due date in activity metadata.
    */
   async updateDetails(
     input: UpdateTodoDetailsServiceInput,
@@ -173,6 +202,11 @@ export class TodoService {
 
     await this.permissionService.requireCanMutateTodos(userId, listId);
 
+    const existing = await this.repository.findById(input.id);
+    if (!existing) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
     let trimmedTitle: string | undefined = undefined;
     if (input.title !== undefined) {
       trimmedTitle = input.title.trim();
@@ -181,10 +215,28 @@ export class TodoService {
       }
     }
 
+    // Check what actually changed
+    const titleChanged = trimmedTitle !== undefined && trimmedTitle !== existing.title;
+    const descChanged =
+      input.description !== undefined &&
+      (input.description ?? null) !== (existing.description ?? null);
+    const priorityChanged =
+      input.priority !== undefined && input.priority !== existing.priority;
+    const dueDateChanged =
+      input.dueDate !== undefined &&
+      (input.dueDate ?? null) !== (existing.dueDate ?? null);
+
+    // Suppress no-op mutations
+    if (!titleChanged && !descChanged && !priorityChanged && !dueDateChanged) {
+      return existing;
+    }
+
     return withTransaction(this.db, async (tx) => {
       const details = {
         title: trimmedTitle,
         description: input.description,
+        priority: input.priority,
+        dueDate: input.dueDate,
       };
 
       const updated = tx
@@ -195,6 +247,26 @@ export class TodoService {
         throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
       }
 
+      const metadata: Record<string, unknown> = {
+        title: updated.title,
+      };
+
+      if (titleChanged) {
+        metadata.previousTitle = existing.title;
+        metadata.newTitle = updated.title;
+      }
+      if (descChanged) {
+        metadata.descriptionChanged = true;
+      }
+      if (priorityChanged) {
+        metadata.previousPriority = existing.priority;
+        metadata.newPriority = updated.priority;
+      }
+      if (dueDateChanged) {
+        metadata.previousDueDate = existing.dueDate ?? null;
+        metadata.newDueDate = updated.dueDate ?? null;
+      }
+
       await this.activityService.logActivity(
         {
           listId,
@@ -202,10 +274,7 @@ export class TodoService {
           action: "TODO_UPDATED",
           entityType: "TODO",
           entityId: updated.id,
-          metadata: {
-            newTitle: updated.title,
-            descriptionChanged: input.description !== undefined,
-          },
+          metadata,
         },
         tx
       );

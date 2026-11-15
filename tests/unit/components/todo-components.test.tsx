@@ -18,6 +18,9 @@ vi.mock("@/lib/trpc/client", () => ({
       updateStatus: {
         useMutation: vi.fn(),
       },
+      updateDetails: {
+        useMutation: vi.fn(),
+      },
       list: {
         useQuery: vi.fn(),
       },
@@ -55,6 +58,11 @@ describe("UI Components", () => {
       mutate: mockStatusMutate,
       isPending: false,
     } as unknown as ReturnType<typeof trpc.todo.updateStatus.useMutation>);
+
+    vi.mocked(trpc.todo.updateDetails.useMutation).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof trpc.todo.updateDetails.useMutation>);
   });
 
   describe("TodoForm", () => {
@@ -104,6 +112,8 @@ describe("UI Components", () => {
         title: "Implement testing",
         description: undefined,
         status: "TODO",
+        priority: "MEDIUM",
+        dueDate: null,
       });
     });
   });
@@ -115,6 +125,8 @@ describe("UI Components", () => {
       title: "UI Card Task",
       description: "Optional notes here",
       status: "TODO" as const,
+      priority: "MEDIUM" as const,
+      dueDate: null,
       createdAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       updatedAt: new Date("2026-05-01T12:00:00Z").toISOString(),
     };

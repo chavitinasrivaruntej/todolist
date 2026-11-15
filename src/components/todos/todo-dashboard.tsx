@@ -9,6 +9,7 @@ import { TodoList } from "@/components/todos/todo-list";
 import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
 import { ActivityTimeline } from "@/components/todos/activity/activity-timeline";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
+import { TaskFilterBar, type TaskFilterState } from "@/components/todos/task-filter-bar";
 import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { UserMenu } from "@/components/auth/user-menu";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -23,10 +24,20 @@ import {
   Loader2,
 } from "lucide-react";
 
+const initialFilters: TaskFilterState = {
+  search: "",
+  priority: undefined,
+  dueFilter: "ALL",
+  sortBy: "created",
+  sortDirection: "desc",
+};
+
 function TodoDashboardInner() {
   const searchParams = useSearchParams();
   const urlListId = searchParams.get("listId");
   const [selectedListId, setSelectedListId] = useState<string | null>(urlListId);
+  const [filters, setFilters] = useState<TaskFilterState>(initialFilters);
+  const [filteredCount, setFilteredCount] = useState<number | undefined>(undefined);
 
   const { data: lists, isLoading } = trpc.todoList.list.useQuery();
   const { viewMode, setViewMode } = useListViewPreference(selectedListId);
@@ -45,6 +56,20 @@ function TodoDashboardInner() {
       setSelectedListId(null);
     }
   }, [lists, selectedListId, urlListId]);
+
+  // Reset filters when active list changes
+  const handleSelectList = (id: string) => {
+    setSelectedListId(id);
+    setFilters(initialFilters);
+  };
+
+  const handleFilterChange = (updated: Partial<TaskFilterState>) => {
+    setFilters((prev) => ({ ...prev, ...updated }));
+  };
+
+  const handleResetFilters = () => {
+    setFilters(initialFilters);
+  };
 
   const activeList = lists?.find((l) => l.id === selectedListId);
   const effectiveRole = activeList?.effectiveRole ?? "OWNER";
@@ -65,16 +90,16 @@ function TodoDashboardInner() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 6: Notifications & Activity
+              Phase 7: Task Management & Productivity
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <NotificationBell onSelectList={(id) => setSelectedListId(id)} />
+            <NotificationBell onSelectList={(id) => handleSelectList(id)} />
             <UserMenu />
           </div>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Workspaces with list sharing, real-time collaboration, activity audit timeline, and in-app notifications.
+          Priorities, calendar due dates, overdue tracking, instant search, deterministic sorting, and activity history.
         </p>
       </header>
 
@@ -83,7 +108,7 @@ function TodoDashboardInner() {
         {/* Left: Lists Sidebar */}
         <ListSidebar
           selectedListId={selectedListId}
-          onSelectList={(id) => setSelectedListId(id)}
+          onSelectList={handleSelectList}
         />
 
         {/* Right: Tasks Area */}
@@ -166,12 +191,34 @@ function TodoDashboardInner() {
                 </section>
               )}
 
+              {/* Filter & Search Bar (Visible in List and Board views) */}
+              {viewMode !== "activity" && (
+                <section aria-label="Task search and filters">
+                  <TaskFilterBar
+                    filters={filters}
+                    onFilterChange={handleFilterChange}
+                    onReset={handleResetFilters}
+                    taskCount={filteredCount}
+                  />
+                </section>
+              )}
+
               {/* View Content (List View vs Kanban Board View vs Activity Timeline) */}
               <section aria-label={`Tasks in ${activeList.name} (${viewMode} view)`}>
                 {viewMode === "list" ? (
-                  <TodoList listId={activeList.id} isReadOnly={isReadOnly} />
+                  <TodoList
+                    listId={activeList.id}
+                    isReadOnly={isReadOnly}
+                    filters={filters}
+                    onTaskCountChange={setFilteredCount}
+                  />
                 ) : viewMode === "board" ? (
-                  <KanbanBoard listId={activeList.id} isReadOnly={isReadOnly} />
+                  <KanbanBoard
+                    listId={activeList.id}
+                    isReadOnly={isReadOnly}
+                    filters={filters}
+                    onTaskCountChange={setFilteredCount}
+                  />
                 ) : (
                   <ActivityTimeline listId={activeList.id} />
                 )}

@@ -20,6 +20,7 @@ import {
   GripVertical,
 } from "lucide-react";
 import { type TodoStatusType } from "@/lib/validations/todo";
+import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
@@ -166,6 +167,12 @@ export function KanbanCard({
             )}
           </Button>
         )}
+      </div>
+
+      {/* Priority & Due Date Badges */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pl-5 select-none">
+        <PriorityBadge priority={todo.priority} />
+        <DueDateBadge dueDate={todo.dueDate} status={todo.status} />
       </div>
 
       {/* Description */}

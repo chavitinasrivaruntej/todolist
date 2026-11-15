@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, pgEnum, index, date } from "drizzle-orm/pg-core";
 import { todoLists } from "./lists";
 
 /**
@@ -7,10 +7,20 @@ import { todoLists } from "./lists";
 export const todoStatusEnum = pgEnum("todo_status", ["TODO", "IN_PROGRESS", "DONE"]);
 
 /**
+ * Todo Priority PostgreSQL Enum
+ */
+export const todoPriorityEnum = pgEnum("todo_priority", [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "URGENT",
+]);
+
+/**
  * Todo Table Definition
  * 
  * Represents an individual todo item belonging to exactly one TodoList,
- * with status, title, optional description, and audit timestamps.
+ * with status, priority, optional due date, title, optional description, and audit timestamps.
  */
 export const todos = pgTable(
   "todos",
@@ -22,6 +32,8 @@ export const todos = pgTable(
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
     status: todoStatusEnum("status").default("TODO").notNull(),
+    priority: todoPriorityEnum("priority").default("MEDIUM").notNull(),
+    dueDate: date("due_date", { mode: "string" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -31,9 +43,12 @@ export const todos = pgTable(
   (table) => [
     index("todos_list_id_idx").on(table.listId),
     index("todos_list_id_created_at_idx").on(table.listId, table.createdAt),
+    index("todos_list_id_due_date_idx").on(table.listId, table.dueDate),
+    index("todos_list_id_priority_idx").on(table.listId, table.priority),
   ]
 );
 
 export type Todo = typeof todos.$inferSelect;
 export type NewTodo = typeof todos.$inferInsert;
 export type TodoStatus = (typeof todoStatusEnum.enumValues)[number];
+export type TodoPriority = (typeof todoPriorityEnum.enumValues)[number];

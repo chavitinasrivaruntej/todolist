@@ -1,24 +1,47 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { TodoItem } from "@/components/todos/todo-item";
 import { Button } from "@/components/ui/button";
 import { CheckSquare, AlertCircle, RefreshCw } from "lucide-react";
+import type { TaskFilterState } from "@/components/todos/task-filter-bar";
 
 interface TodoListProps {
   listId: string;
   isReadOnly?: boolean;
+  filters?: TaskFilterState;
+  onTaskCountChange?: (count: number) => void;
 }
 
-export function TodoList({ listId, isReadOnly = false }: TodoListProps) {
+export function TodoList({
+  listId,
+  isReadOnly = false,
+  filters,
+  onTaskCountChange,
+}: TodoListProps) {
+  const queryInput = {
+    listId,
+    search: filters?.search?.trim() ? filters.search.trim() : undefined,
+    priority: filters?.priority,
+    dueFilter: filters?.dueFilter,
+    sortBy: filters?.sortBy,
+    sortDirection: filters?.sortDirection,
+  };
+
   const {
     data: todos,
     isLoading,
     isError,
     error,
     refetch,
-  } = trpc.todo.list.useQuery({ listId });
+  } = trpc.todo.list.useQuery(queryInput);
+
+  useEffect(() => {
+    if (todos && onTaskCountChange) {
+      onTaskCountChange(todos.length);
+    }
+  }, [todos, onTaskCountChange]);
 
   if (isLoading) {
     return (
@@ -57,16 +80,23 @@ export function TodoList({ listId, isReadOnly = false }: TodoListProps) {
   }
 
   if (!todos || todos.length === 0) {
+    const isFiltered =
+      Boolean(filters?.search?.trim()) ||
+      Boolean(filters?.priority) ||
+      (filters?.dueFilter && filters.dueFilter !== "ALL");
+
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-neutral-200 p-8 text-center dark:border-neutral-800">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 mb-2 text-neutral-400">
           <CheckSquare className="h-4 w-4" />
         </div>
         <h4 className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
-          No tasks in this list yet
+          {isFiltered ? "No tasks matching filter criteria" : "No tasks in this list yet"}
         </h4>
         <p className="mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">
-          Add a task above to organize your work in this list.
+          {isFiltered
+            ? "Try resetting or adjusting your search and filter parameters."
+            : "Add a task above to organize your work in this list."}
         </p>
       </div>
     );

@@ -74,6 +74,8 @@ describe("TodoRepository", () => {
         title: "Test Task",
         description: null,
         status: "TODO",
+        priority: "MEDIUM",
+        dueDate: null,
       });
       expect(result).toEqual(createdRecord);
     });

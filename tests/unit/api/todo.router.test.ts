@@ -27,6 +27,8 @@ describe("tRPC API: Todo Router", () => {
     title: "Integration Task",
     description: "Testing tRPC procedures",
     status: "TODO" as const,
+    priority: "MEDIUM" as const,
+    dueDate: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };
@@ -54,7 +56,12 @@ describe("tRPC API: Todo Router", () => {
       const result = await caller.todo.list({ listId: sampleListId });
 
       expect(todoService.getTodosByList).toHaveBeenCalledWith(
-        { listId: sampleListId },
+        expect.objectContaining({
+          listId: sampleListId,
+          dueFilter: "ALL",
+          sortBy: "created",
+          sortDirection: "desc",
+        }),
         mockUser.id
       );
       expect(result).toEqual([sampleTodo]);
@@ -68,7 +75,9 @@ describe("tRPC API: Todo Router", () => {
       const result = await caller.todo.list({ listId: defaultListId });
 
       expect(todoService.getTodosByList).toHaveBeenCalledWith(
-        { listId: defaultListId },
+        expect.objectContaining({
+          listId: defaultListId,
+        }),
         mockUser.id
       );
       expect(result).toEqual([]);
@@ -96,12 +105,13 @@ describe("tRPC API: Todo Router", () => {
       });
 
       expect(todoService.createTodo).toHaveBeenCalledWith(
-        {
+        expect.objectContaining({
           listId: sampleListId,
           title: "Integration Task",
           description: "Testing tRPC procedures",
           status: "TODO",
-        },
+          priority: "MEDIUM",
+        }),
         mockUser.id
       );
       expect(result).toEqual(sampleTodo);

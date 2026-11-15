@@ -71,18 +71,84 @@ function getActivityConfig(activity: ActivityItemData) {
           </span>
         ),
       };
-    case "TODO_UPDATED":
+    case "TODO_UPDATED": {
+      const parts: React.ReactNode[] = [];
+      if (m.previousTitle && m.newTitle && m.previousTitle !== m.newTitle) {
+        parts.push(
+          <span key="title">
+            renamed task from <span className="line-through text-neutral-400">"{m.previousTitle}"</span> to{" "}
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200">"{m.newTitle}"</span>
+          </span>
+        );
+      }
+      if (m.previousPriority && m.newPriority && m.previousPriority !== m.newPriority) {
+        parts.push(
+          <span key="priority">
+            changed priority from{" "}
+            <span className="font-medium underline decoration-dotted">{m.previousPriority}</span> to{" "}
+            <span className="font-semibold">{m.newPriority}</span>
+          </span>
+        );
+      }
+      if (
+        m.previousDueDate !== undefined &&
+        m.newDueDate !== undefined &&
+        m.previousDueDate !== m.newDueDate
+      ) {
+        if (!m.newDueDate) {
+          parts.push(
+            <span key="due">
+              removed due date (was {m.previousDueDate})
+            </span>
+          );
+        } else if (!m.previousDueDate) {
+          parts.push(
+            <span key="due">
+              set due date to <span className="font-semibold">{m.newDueDate}</span>
+            </span>
+          );
+        } else {
+          parts.push(
+            <span key="due">
+              changed due date from {m.previousDueDate} to{" "}
+              <span className="font-semibold">{m.newDueDate}</span>
+            </span>
+          );
+        }
+      }
+
+      if (parts.length === 0) {
+        return {
+          icon: <Edit3 className="h-3.5 w-3.5 text-sky-500" />,
+          text: (
+            <span>
+              <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> updated task{" "}
+              <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                "{m.title || m.newTitle || "Task"}"
+              </span>
+            </span>
+          ),
+        };
+      }
+
       return {
         icon: <Edit3 className="h-3.5 w-3.5 text-sky-500" />,
         text: (
           <span>
-            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> edited task{" "}
-            <span className="font-medium text-neutral-800 dark:text-neutral-200">
-              "{m.newTitle || m.previousTitle || "Task"}"
-            </span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong>{" "}
+            {parts.map((p, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && ", "}
+                {p}
+              </React.Fragment>
+            ))}
+            {m.title && !parts.some((p) => (p as React.ReactElement).key === "title") && (
+              <span className="text-neutral-500"> on "{m.title}"</span>
+            )}
           </span>
         ),
       };
+    }
     case "TODO_STATUS_CHANGED":
       return {
         icon: <ArrowRightCircle className="h-3.5 w-3.5 text-emerald-500" />,

@@ -19,17 +19,34 @@ import { KanbanCard, type TodoListItem } from "@/components/todos/kanban/kanban-
 import { Button } from "@/components/ui/button";
 import { type TodoStatusType, TODO_STATUSES } from "@/lib/validations/todo";
 import { AlertCircle, RefreshCw, CheckSquare } from "lucide-react";
+import type { TaskFilterState } from "@/components/todos/task-filter-bar";
 
 interface KanbanBoardProps {
   listId: string;
   isReadOnly?: boolean;
+  filters?: TaskFilterState;
+  onTaskCountChange?: (count: number) => void;
 }
 
-export function KanbanBoard({ listId, isReadOnly = false }: KanbanBoardProps) {
+export function KanbanBoard({
+  listId,
+  isReadOnly = false,
+  filters,
+  onTaskCountChange,
+}: KanbanBoardProps) {
   const [mobileTab, setMobileTab] = useState<TodoStatusType>("TODO");
   const [activeTodo, setActiveTodo] = useState<TodoListItem | null>(null);
 
   const utils = trpc.useUtils();
+
+  const queryInput = {
+    listId,
+    search: filters?.search?.trim() ? filters.search.trim() : undefined,
+    priority: filters?.priority,
+    dueFilter: filters?.dueFilter,
+    sortBy: filters?.sortBy,
+    sortDirection: filters?.sortDirection,
+  };
 
   const {
     data: todos,
@@ -37,7 +54,13 @@ export function KanbanBoard({ listId, isReadOnly = false }: KanbanBoardProps) {
     isError,
     error,
     refetch,
-  } = trpc.todo.list.useQuery({ listId });
+  } = trpc.todo.list.useQuery(queryInput);
+
+  React.useEffect(() => {
+    if (todos && onTaskCountChange) {
+      onTaskCountChange(todos.length);
+    }
+  }, [todos, onTaskCountChange]);
 
   const updateStatusMutation = trpc.todo.updateStatus.useMutation({
     onSuccess: async () => {

@@ -190,6 +190,8 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
           title: input.title,
           description: input.description ?? null,
           status: "TODO",
+          priority: "MEDIUM" as const,
+          dueDate: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -213,6 +215,8 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
           title: "Beta Task",
           description: null,
           status: input.status,
+          priority: "MEDIUM" as const,
+          dueDate: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -288,6 +292,8 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
         title: "Alpha Task",
         description: "Valid task",
         status: "TODO",
+        priority: "MEDIUM" as const,
+        dueDate: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -298,6 +304,8 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
         title: "Alpha Task",
         description: "Valid task",
         status: "DONE",
+        priority: "MEDIUM" as const,
+        dueDate: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
