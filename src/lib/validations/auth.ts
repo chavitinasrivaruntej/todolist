@@ -38,3 +38,41 @@ export const registerSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/**
+ * Validates and sanitizes a redirect path to prevent open redirect vulnerabilities.
+ * Allows only internal relative paths starting with a single '/' and rejects
+ * external URLs, protocol-relative paths ('//'), backslashes, and schemes.
+ */
+export function sanitizeRedirectPath(nextPath: string | null | undefined): string {
+  if (!nextPath || typeof nextPath !== "string") {
+    return "/";
+  }
+
+  const trimmed = nextPath.trim();
+
+  // Must begin with a single '/' and not with '//' or '/\'
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+    return "/";
+  }
+
+  // Reject backslashes anywhere in the string to prevent path confusion or scheme escapes
+  if (trimmed.includes("\\")) {
+    return "/";
+  }
+
+  // Reject scheme patterns (e.g. javascript:, http:, https:, data:)
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    return "/";
+  }
+
+  try {
+    const parsed = new URL(trimmed, "http://localhost");
+    if (parsed.origin !== "http://localhost") {
+      return "/";
+    }
+    return parsed.pathname + parsed.search + parsed.hash;
+  } catch {
+    return "/";
+  }
+}
+

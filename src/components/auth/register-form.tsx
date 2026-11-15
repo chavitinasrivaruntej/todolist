@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { registerSchema } from "@/lib/validations/auth";
+import { registerSchema, sanitizeRedirectPath } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -13,11 +13,7 @@ import { Loader2, UserPlus, AlertCircle, CheckCircle } from "lucide-react";
 function RegisterFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const rawRedirect = searchParams.get("redirect");
-  const redirectUrl =
-    rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
-      ? rawRedirect
-      : "/";
+  const redirectUrl = sanitizeRedirectPath(searchParams.get("redirect"));
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { sanitizeRedirectPath } from "@/lib/validations/auth";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -51,12 +52,10 @@ export async function updateSession(request: NextRequest) {
 
   // If user is authenticated and navigating to login/register, redirect to destination or /
   if (user && isAuthPage) {
-    const redirectParam = request.nextUrl.searchParams.get("redirect");
-    if (
-      redirectParam &&
-      redirectParam.startsWith("/") &&
-      !redirectParam.startsWith("//")
-    ) {
+    const redirectParam = sanitizeRedirectPath(
+      request.nextUrl.searchParams.get("redirect")
+    );
+    if (redirectParam !== "/") {
       return NextResponse.redirect(new URL(redirectParam, request.url));
     }
     url.pathname = "/";
