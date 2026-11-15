@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-export type ViewMode = "list" | "board";
+export type ViewMode = "list" | "board" | "activity";
 
 const STORAGE_KEY = "caize_view_preferences_v1";
 
@@ -26,7 +26,7 @@ function readStoredPreferences(): Record<string, ViewMode> {
 
     const validated: Record<string, ViewMode> = {};
     for (const [key, val] of Object.entries(parsed)) {
-      if (val === "list" || val === "board") {
+      if (val === "list" || val === "board" || val === "activity") {
         validated[key] = val;
       }
     }
@@ -50,7 +50,7 @@ function persistPreferences(prefs: Record<string, ViewMode>): void {
 }
 
 /**
- * Custom hook to store and retrieve view preferences (List vs Board) independently per Todo list.
+ * Custom hook to store and retrieve view preferences (List, Board, Activity) independently per Todo list.
  * Guarantees zero SSR hydration mismatches by initializing with default 'list' and syncing on mount.
  */
 export function useListViewPreference(listId: string | null) {

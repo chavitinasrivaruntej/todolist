@@ -38,6 +38,25 @@ export const updateTodoStatusSchema = z.object({
 });
 
 /**
+ * Validation schema for updating a Todo's title and description.
+ */
+export const updateTodoDetailsSchema = z.object({
+  id: z.string().uuid("Invalid todo ID format"),
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title cannot be empty")
+    .max(255, "Title cannot exceed 255 characters")
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .max(1000, "Description cannot exceed 1000 characters")
+    .nullish()
+    .transform((val) => (val === "" || val === null || val === undefined ? null : val)),
+});
+
+/**
  * Validation schema for deleting a Todo item.
  */
 export const deleteTodoSchema = z.object({
@@ -47,4 +66,5 @@ export const deleteTodoSchema = z.object({
 export type GetTodosByListInput = z.infer<typeof getTodosByListSchema>;
 export type CreateTodoInput = z.infer<typeof createTodoSchema>;
 export type UpdateTodoStatusInput = z.infer<typeof updateTodoStatusSchema>;
+export type UpdateTodoDetailsInput = z.infer<typeof updateTodoDetailsSchema>;
 export type DeleteTodoInput = z.infer<typeof deleteTodoSchema>;

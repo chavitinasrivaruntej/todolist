@@ -7,9 +7,11 @@ import { ListSidebar } from "@/components/lists/list-sidebar";
 import { TodoForm } from "@/components/todos/todo-form";
 import { TodoList } from "@/components/todos/todo-list";
 import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
+import { ActivityTimeline } from "@/components/todos/activity/activity-timeline";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
 import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { UserMenu } from "@/components/auth/user-menu";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ShareListDialog } from "@/components/sharing/share-list-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -63,13 +65,16 @@ function TodoDashboardInner() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 5: Collaborative
+              Phase 6: Notifications & Activity
             </Badge>
           </div>
-          <UserMenu />
+          <div className="flex items-center gap-2">
+            <NotificationBell onSelectList={(id) => setSelectedListId(id)} />
+            <UserMenu />
+          </div>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Workspaces with list sharing, role-based collaboration, and dual List/Kanban views.
+          Workspaces with list sharing, real-time collaboration, activity audit timeline, and in-app notifications.
         </p>
       </header>
 
@@ -154,19 +159,21 @@ function TodoDashboardInner() {
                 </div>
               )}
 
-              {/* Task Creation Form (Hidden for Viewers) */}
-              {!isReadOnly && (
+              {/* Task Creation Form (Hidden for Viewers and when in Activity view) */}
+              {!isReadOnly && viewMode !== "activity" && (
                 <section aria-label={`Task creation for ${activeList.name}`}>
                   <TodoForm listId={activeList.id} listName={activeList.name} />
                 </section>
               )}
 
-              {/* View Content (List View vs Kanban Board View) */}
+              {/* View Content (List View vs Kanban Board View vs Activity Timeline) */}
               <section aria-label={`Tasks in ${activeList.name} (${viewMode} view)`}>
                 {viewMode === "list" ? (
                   <TodoList listId={activeList.id} isReadOnly={isReadOnly} />
-                ) : (
+                ) : viewMode === "board" ? (
                   <KanbanBoard listId={activeList.id} isReadOnly={isReadOnly} />
+                ) : (
+                  <ActivityTimeline listId={activeList.id} />
                 )}
               </section>
             </>

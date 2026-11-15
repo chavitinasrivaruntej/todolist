@@ -4,6 +4,7 @@ import {
   deleteTodoSchema,
   getTodosByListSchema,
   updateTodoStatusSchema,
+  updateTodoDetailsSchema,
 } from "@/lib/validations/todo";
 import { todoService } from "@/server/services/todo.service";
 
@@ -14,7 +15,7 @@ import { todoService } from "@/server/services/todo.service";
  */
 export const todoRouter = createTRPCRouter({
   /**
-   * Retrieves all todos belonging to a specific list owned by the authenticated user.
+   * Retrieves all todos belonging to a specific list accessible to the user.
    */
   list: protectedProcedure
     .input(getTodosByListSchema)
@@ -23,7 +24,7 @@ export const todoRouter = createTRPCRouter({
     }),
 
   /**
-   * Creates a new todo within the specified list owned by the authenticated user.
+   * Creates a new todo within the specified list.
    */
   create: protectedProcedure
     .input(createTodoSchema)
@@ -32,7 +33,7 @@ export const todoRouter = createTRPCRouter({
     }),
 
   /**
-   * Updates the status of an existing todo (TODO, IN_PROGRESS, DONE) owned by the authenticated user.
+   * Updates the status of an existing todo (TODO, IN_PROGRESS, DONE).
    */
   updateStatus: protectedProcedure
     .input(updateTodoStatusSchema)
@@ -41,7 +42,16 @@ export const todoRouter = createTRPCRouter({
     }),
 
   /**
-   * Deletes a todo by ID belonging to a list owned by the authenticated user.
+   * Updates the title or description of an existing todo.
+   */
+  updateDetails: protectedProcedure
+    .input(updateTodoDetailsSchema)
+    .mutation(async ({ input, ctx }) => {
+      return todoService.updateDetails(input, ctx.user.id);
+    }),
+
+  /**
+   * Deletes a todo by ID belonging to an accessible list.
    */
   delete: protectedProcedure
     .input(deleteTodoSchema)

@@ -1,5 +1,5 @@
 import { eq, and, asc, count } from "drizzle-orm";
-import { db as defaultDb, type Database } from "@/db";
+import { db as defaultDb, type Database, type DbExecutor } from "@/db";
 import { todoLists, type TodoList } from "@/db/schema/lists";
 import { todos } from "@/db/schema/todos";
 import { listMembers } from "@/db/schema/members";
@@ -15,9 +15,9 @@ export interface ITodoListRepository {
   findOwnedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
   findSharedWithTaskCounts(userId: string): Promise<TodoListWithTaskCount[]>;
   findById(id: string, userId?: string): Promise<TodoList | null>;
-  create(data: { name: string; userId: string }): Promise<TodoList>;
-  updateName(id: string, name: string): Promise<TodoList | null>;
-  delete(id: string): Promise<boolean>;
+  create(data: { name: string; userId: string }, tx?: DbExecutor): Promise<TodoList>;
+  updateName(id: string, name: string, tx?: DbExecutor): Promise<TodoList | null>;
+  delete(id: string, tx?: DbExecutor): Promise<boolean>;
   countTasksByListId(id: string): Promise<number>;
 }
 
@@ -107,8 +107,12 @@ export class TodoListRepository implements ITodoListRepository {
     return result ?? null;
   }
 
-  async create(data: { name: string; userId: string }): Promise<TodoList> {
-    const [created] = await this.db
+  async create(
+    data: { name: string; userId: string },
+    tx?: DbExecutor
+  ): Promise<TodoList> {
+    const executor = tx ?? this.db;
+    const [created] = await executor
       .insert(todoLists)
       .values({
         name: data.name,
@@ -123,8 +127,13 @@ export class TodoListRepository implements ITodoListRepository {
     return created;
   }
 
-  async updateName(id: string, name: string): Promise<TodoList | null> {
-    const [updated] = await this.db
+  async updateName(
+    id: string,
+    name: string,
+    tx?: DbExecutor
+  ): Promise<TodoList | null> {
+    const executor = tx ?? this.db;
+    const [updated] = await executor
       .update(todoLists)
       .set({
         name,
@@ -136,8 +145,9 @@ export class TodoListRepository implements ITodoListRepository {
     return updated ?? null;
   }
 
-  async delete(id: string): Promise<boolean> {
-    const deleted = await this.db
+  async delete(id: string, tx?: DbExecutor): Promise<boolean> {
+    const executor = tx ?? this.db;
+    const deleted = await executor
       .delete(todoLists)
       .where(eq(todoLists.id, id))
       .returning({ id: todoLists.id });

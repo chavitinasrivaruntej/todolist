@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
 
 describe("ViewSwitcher Component", () => {
-  it("should render List and Board buttons with correct active state", () => {
+  it("should render List, Board, and Activity buttons with correct active state", () => {
     const handleViewChange = vi.fn();
 
     const { rerender } = render(
@@ -13,14 +13,17 @@ describe("ViewSwitcher Component", () => {
 
     const listBtn = screen.getByRole("button", { name: /List/i });
     const boardBtn = screen.getByRole("button", { name: /Board/i });
+    const activityBtn = screen.getByRole("button", { name: /Activity/i });
 
     expect(listBtn).toHaveAttribute("aria-pressed", "true");
     expect(boardBtn).toHaveAttribute("aria-pressed", "false");
+    expect(activityBtn).toHaveAttribute("aria-pressed", "false");
 
-    // Rerender with board active
-    rerender(<ViewSwitcher currentView="board" onViewChange={handleViewChange} />);
+    // Rerender with activity active
+    rerender(<ViewSwitcher currentView="activity" onViewChange={handleViewChange} />);
     expect(listBtn).toHaveAttribute("aria-pressed", "false");
-    expect(boardBtn).toHaveAttribute("aria-pressed", "true");
+    expect(boardBtn).toHaveAttribute("aria-pressed", "false");
+    expect(activityBtn).toHaveAttribute("aria-pressed", "true");
   });
 
   it("should trigger onViewChange callback when clicking buttons", () => {
@@ -28,10 +31,9 @@ describe("ViewSwitcher Component", () => {
 
     render(<ViewSwitcher currentView="list" onViewChange={handleViewChange} />);
 
-    const boardBtn = screen.getByRole("button", { name: /Board/i });
-    fireEvent.click(boardBtn);
+    const activityBtn = screen.getByRole("button", { name: /Activity/i });
+    fireEvent.click(activityBtn);
 
-    expect(handleViewChange).toHaveBeenCalledWith("board");
+    expect(handleViewChange).toHaveBeenCalledWith("activity");
   });
 });
-

@@ -75,3 +75,4 @@ export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
 });
 
 export type Database = PostgresJsDatabase<typeof schema>;
+export type DbExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];

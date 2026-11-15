@@ -30,6 +30,7 @@ describe("TodoService", () => {
       findListIdByTodoId: vi.fn().mockResolvedValue(sampleListId),
       create: vi.fn(),
       updateStatus: vi.fn(),
+      updateDetails: vi.fn(),
       delete: vi.fn(),
     };
 

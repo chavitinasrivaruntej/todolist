@@ -1,19 +1,27 @@
 import { eq, desc } from "drizzle-orm";
-import { db as defaultDb, type Database } from "@/db";
+import { db as defaultDb, type Database, type DbExecutor } from "@/db";
 import { todos, type Todo, type TodoStatus } from "@/db/schema/todos";
 
 export interface ITodoRepository {
   findAllByListId(listId: string): Promise<Todo[]>;
   findById(id: string): Promise<Todo | null>;
   findListIdByTodoId(id: string): Promise<string | null>;
-  create(data: {
-    listId: string;
-    title: string;
-    description?: string | null;
-    status?: TodoStatus;
-  }): Promise<Todo>;
-  updateStatus(id: string, status: TodoStatus): Promise<Todo | null>;
-  delete(id: string): Promise<boolean>;
+  create(
+    data: {
+      listId: string;
+      title: string;
+      description?: string | null;
+      status?: TodoStatus;
+    },
+    tx?: DbExecutor
+  ): Promise<Todo>;
+  updateStatus(id: string, status: TodoStatus, tx?: DbExecutor): Promise<Todo | null>;
+  updateDetails(
+    id: string,
+    data: { title?: string; description?: string | null },
+    tx?: DbExecutor
+  ): Promise<Todo | null>;
+  delete(id: string, tx?: DbExecutor): Promise<boolean>;
 }
 
 /**
@@ -54,13 +62,17 @@ export class TodoRepository implements ITodoRepository {
     return result?.listId ?? null;
   }
 
-  async create(data: {
-    listId: string;
-    title: string;
-    description?: string | null;
-    status?: TodoStatus;
-  }): Promise<Todo> {
-    const [created] = await this.db
+  async create(
+    data: {
+      listId: string;
+      title: string;
+      description?: string | null;
+      status?: TodoStatus;
+    },
+    tx?: DbExecutor
+  ): Promise<Todo> {
+    const executor = tx ?? this.db;
+    const [created] = await executor
       .insert(todos)
       .values({
         listId: data.listId,
@@ -77,8 +89,13 @@ export class TodoRepository implements ITodoRepository {
     return created;
   }
 
-  async updateStatus(id: string, status: TodoStatus): Promise<Todo | null> {
-    const [updated] = await this.db
+  async updateStatus(
+    id: string,
+    status: TodoStatus,
+    tx?: DbExecutor
+  ): Promise<Todo | null> {
+    const executor = tx ?? this.db;
+    const [updated] = await executor
       .update(todos)
       .set({
         status,
@@ -90,8 +107,30 @@ export class TodoRepository implements ITodoRepository {
     return updated ?? null;
   }
 
-  async delete(id: string): Promise<boolean> {
-    const deleted = await this.db
+  async updateDetails(
+    id: string,
+    data: { title?: string; description?: string | null },
+    tx?: DbExecutor
+  ): Promise<Todo | null> {
+    const executor = tx ?? this.db;
+    const updateSet: Partial<typeof todos.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (data.title !== undefined) updateSet.title = data.title;
+    if (data.description !== undefined) updateSet.description = data.description;
+
+    const [updated] = await executor
+      .update(todos)
+      .set(updateSet)
+      .where(eq(todos.id, id))
+      .returning();
+
+    return updated ?? null;
+  }
+
+  async delete(id: string, tx?: DbExecutor): Promise<boolean> {
+    const executor = tx ?? this.db;
+    const deleted = await executor
       .delete(todos)
       .where(eq(todos.id, id))
       .returning({ id: todos.id });

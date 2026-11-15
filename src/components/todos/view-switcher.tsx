@@ -2,7 +2,7 @@
 
 import React from "react";
 import { type ViewMode } from "@/hooks/use-list-view-preference";
-import { List, Columns3 } from "lucide-react";
+import { List, Columns3, History } from "lucide-react";
 
 interface ViewSwitcherProps {
   currentView: ViewMode;
@@ -45,7 +45,21 @@ export function ViewSwitcher({ currentView, onViewChange }: ViewSwitcherProps) {
         <Columns3 className="h-3.5 w-3.5" />
         <span>Board</span>
       </button>
+
+      <button
+        type="button"
+        role="button"
+        aria-pressed={currentView === "activity"}
+        onClick={() => onViewChange("activity")}
+        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+          currentView === "activity"
+            ? "bg-white text-neutral-900 shadow-xs dark:bg-neutral-800 dark:text-neutral-100"
+            : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+        }`}
+      >
+        <History className="h-3.5 w-3.5" />
+        <span>Activity</span>
+      </button>
     </div>
   );
 }
-

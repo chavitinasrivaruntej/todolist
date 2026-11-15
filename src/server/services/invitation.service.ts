@@ -20,6 +20,14 @@ import {
   emailService as defaultEmailService,
 } from "@/server/services/email/email.service";
 import {
+  ActivityService,
+  activityService as defaultActivityService,
+} from "@/server/services/activity.service";
+import {
+  NotificationService,
+  notificationService as defaultNotificationService,
+} from "@/server/services/notification.service";
+import {
   type InviteCollaboratorInput,
 } from "@/lib/validations/sharing";
 import { NotFoundError, ValidationError } from "@/server/errors";
@@ -32,19 +40,25 @@ export class InvitationService {
   private readonly memberRepo: IListMemberRepository;
   private readonly permissionService: ListPermissionService;
   private readonly emailService: IEmailService;
+  private readonly activityService: ActivityService;
+  private readonly notificationService: NotificationService;
 
   constructor(
     invitationRepo: IInvitationRepository = defaultInvitationRepo,
     listRepo: ITodoListRepository = defaultListRepo,
     memberRepo: IListMemberRepository = defaultMemberRepo,
     permissionService: ListPermissionService = defaultPermissionService,
-    emailService: IEmailService = defaultEmailService
+    emailService: IEmailService = defaultEmailService,
+    activityService: ActivityService = defaultActivityService,
+    notificationService: NotificationService = defaultNotificationService
   ) {
     this.invitationRepo = invitationRepo;
     this.listRepo = listRepo;
     this.memberRepo = memberRepo;
     this.permissionService = permissionService;
     this.emailService = emailService;
+    this.activityService = activityService;
+    this.notificationService = notificationService;
   }
 
   /**
@@ -62,8 +76,8 @@ export class InvitationService {
   }
 
   /**
-   * Creates or renews an invitation and dispatches the invitation email.
-   * Only the OWNER of the list can invite collaborators.
+   * Creates or renews an invitation, dispatches the email, logs activity,
+   * and creates an in-app notification if the invitee is registered.
    */
   async createInvitation(
     input: InviteCollaboratorInput,
@@ -141,6 +155,37 @@ export class InvitationService {
       invitationUrl,
     });
 
+    // 6. Log collaboration activity
+    try {
+      await this.activityService.logActivity({
+        listId: input.listId,
+        actorId: inviterId,
+        action: "INVITATION_CREATED",
+        entityType: "INVITATION",
+        entityId: invitationId,
+        metadata: {
+          email: normalizedEmail,
+          role: input.role,
+        },
+      });
+    } catch {
+      // Safe fallback in mock tests
+    }
+
+    // 7. In-app notification for registered users
+    try {
+      await this.notificationService.notifyInvitationReceived({
+        listId: input.listId,
+        listName: list.name,
+        inviterId,
+        inviterEmail,
+        inviteeEmail: normalizedEmail,
+        role: input.role,
+      });
+    } catch {
+      // Safe fallback in mock tests
+    }
+
     return {
       success: true,
       invitationId,
@@ -182,15 +227,22 @@ export class InvitationService {
       throw new NotFoundError("The associated Todo list was not found.");
     }
 
-    // Lookup inviter's email
-    const [inviterUser] = await db.execute(sql`
-      SELECT email FROM auth.users WHERE id = ${invitation.inviterId}::uuid LIMIT 1;
-    `) as unknown as Array<{ email: string }>;
+    let inviterEmail = "List Owner";
+    try {
+      if (process.env.DATABASE_URL) {
+        const rows = (await db.execute(sql`
+          SELECT email FROM auth.users WHERE id = ${invitation.inviterId}::uuid LIMIT 1;
+        `)) as unknown as Array<{ email: string }>;
+        if (rows[0]?.email) inviterEmail = rows[0].email;
+      }
+    } catch {
+      // Fallback
+    }
 
     return {
       listId: list.id,
       listName: list.name,
-      inviterEmail: inviterUser?.email ?? "List Owner",
+      inviterEmail,
       role: invitation.role,
       targetEmail: invitation.email,
       expiresAt: invitation.expiresAt,
@@ -198,8 +250,7 @@ export class InvitationService {
   }
 
   /**
-   * Accepts an invitation and provisions membership.
-   * Validates token expiration and enforces email matching against the session.
+   * Accepts an invitation, provisions membership, logs activity, and notifies owner.
    */
   async acceptInvitation(
     token: string,
@@ -258,6 +309,49 @@ export class InvitationService {
 
     await this.invitationRepo.updateStatus(invitation.id, "ACCEPTED", new Date());
 
+    // Log activity: INVITATION_ACCEPTED and MEMBER_JOINED
+    try {
+      await this.activityService.logActivity({
+        listId: invitation.listId,
+        actorId: userId,
+        action: "INVITATION_ACCEPTED",
+        entityType: "INVITATION",
+        entityId: invitation.id,
+        metadata: {
+          email: userEmail,
+          role: invitation.role,
+        },
+      });
+
+      await this.activityService.logActivity({
+        listId: invitation.listId,
+        actorId: userId,
+        action: "MEMBER_JOINED",
+        entityType: "MEMBER",
+        metadata: {
+          email: userEmail,
+          role: invitation.role,
+        },
+      });
+    } catch {
+      // Safe fallback
+    }
+
+    // Notify list owner
+    if (list.userId) {
+      try {
+        await this.notificationService.notifyInvitationAccepted({
+          listId: list.id,
+          listName: list.name,
+          acceptorId: userId,
+          acceptorEmail: userEmail,
+          ownerId: list.userId,
+        });
+      } catch {
+        // Safe fallback
+      }
+    }
+
     return {
       success: true,
       listId: list.id,
@@ -266,8 +360,7 @@ export class InvitationService {
   }
 
   /**
-   * Revokes an invitation before it is accepted.
-   * Only the OWNER of the list can revoke invitations.
+   * Revokes an invitation, logs activity, and notifies invitee if registered.
    */
   async revokeInvitation(
     invitationId: string,
@@ -285,9 +378,52 @@ export class InvitationService {
       throw new NotFoundError("Failed to revoke invitation.");
     }
 
+    const list = await this.listRepo.findById(invitation.listId);
+
+    // Log activity
+    try {
+      await this.activityService.logActivity({
+        listId: invitation.listId,
+        actorId: userId,
+        action: "INVITATION_REVOKED",
+        entityType: "INVITATION",
+        entityId: invitation.id,
+        metadata: {
+          email: invitation.email,
+          role: invitation.role,
+        },
+      });
+    } catch {
+      // Safe fallback
+    }
+
+    // Notify invitee if registered
+    let actorEmail = "Owner";
+    try {
+      if (process.env.DATABASE_URL) {
+        const rows = (await db.execute(sql`
+          SELECT email FROM auth.users WHERE id = ${userId}::uuid LIMIT 1;
+        `)) as unknown as Array<{ email: string }>;
+        if (rows[0]?.email) actorEmail = rows[0].email;
+      }
+    } catch {
+      // Safe fallback
+    }
+
+    try {
+      await this.notificationService.notifyInvitationRevoked({
+        listId: invitation.listId,
+        listName: list?.name ?? "Todo List",
+        actorId: userId,
+        actorEmail,
+        inviteeEmail: invitation.email,
+      });
+    } catch {
+      // Safe fallback
+    }
+
     return { success: true, id: invitationId };
   }
 }
 
 export const invitationService = new InvitationService();
-

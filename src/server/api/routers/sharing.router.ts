@@ -11,6 +11,8 @@ import {
 import { invitationService } from "@/server/services/invitation.service";
 import { todoListService } from "@/server/services/todo-list.service";
 import { listPermissionService } from "@/server/services/list-permission.service";
+import { activityService } from "@/server/services/activity.service";
+import { notificationService } from "@/server/services/notification.service";
 import { listMemberRepository } from "@/server/repositories/list-member.repository";
 import { invitationRepository } from "@/server/repositories/invitation.repository";
 import { todoListRepository } from "@/server/repositories/todo-list.repository";
@@ -112,12 +114,55 @@ export const sharingRouter = createTRPCRouter({
 
       await listPermissionService.requireOwner(ctx.user.id, member.listId);
 
+      const previousRole = member.role;
       const updated = await listMemberRepository.updateRole(
         member.id,
         input.role
       );
       if (!updated) {
         throw new NotFoundError("Failed to update collaborator role.");
+      }
+
+      let listName = "Todo List";
+      try {
+        if (process.env.DATABASE_URL) {
+          const list = await todoListRepository.findById(member.listId);
+          if (list) listName = list.name;
+        }
+      } catch {
+        // Fallback in mock tests
+      }
+
+      // Log activity
+      try {
+        await activityService.logActivity({
+          listId: member.listId,
+          actorId: ctx.user.id,
+          action: "MEMBER_ROLE_CHANGED",
+          entityType: "MEMBER",
+          entityId: member.id,
+          metadata: {
+            memberUserId: member.userId,
+            previousRole,
+            newRole: input.role,
+          },
+        });
+      } catch {
+        // Safe logging fallback
+      }
+
+      // Dispatch in-app notification to member
+      try {
+        await notificationService.notifyMemberRoleChanged({
+          listId: member.listId,
+          listName,
+          actorId: ctx.user.id,
+          actorEmail: ctx.user.email ?? "Owner",
+          memberUserId: member.userId,
+          newRole: input.role,
+        });
+      } catch {
+        // Safe notification fallback
       }
 
       return updated;
@@ -140,6 +185,46 @@ export const sharingRouter = createTRPCRouter({
       const deleted = await listMemberRepository.deleteMember(member.id);
       if (!deleted) {
         throw new NotFoundError("Failed to remove collaborator.");
+      }
+
+      let listName = "Todo List";
+      try {
+        if (process.env.DATABASE_URL) {
+          const list = await todoListRepository.findById(member.listId);
+          if (list) listName = list.name;
+        }
+      } catch {
+        // Fallback in mock tests
+      }
+
+      // Log activity
+      try {
+        await activityService.logActivity({
+          listId: member.listId,
+          actorId: ctx.user.id,
+          action: "MEMBER_REMOVED",
+          entityType: "MEMBER",
+          entityId: member.id,
+          metadata: {
+            memberUserId: member.userId,
+            role: member.role,
+          },
+        });
+      } catch {
+        // Safe logging fallback
+      }
+
+      // Dispatch in-app notification to removed member
+      try {
+        await notificationService.notifyMemberRemoved({
+          listId: member.listId,
+          listName,
+          actorId: ctx.user.id,
+          actorEmail: ctx.user.email ?? "Owner",
+          memberUserId: member.userId,
+        });
+      } catch {
+        // Safe notification fallback
       }
 
       return { success: true, memberId: input.memberId };
