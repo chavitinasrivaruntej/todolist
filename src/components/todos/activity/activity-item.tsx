@@ -16,6 +16,7 @@ import {
   LogOut,
   ShieldAlert,
   Clock,
+  Tag as TagIcon,
 } from "lucide-react";
 import type { ActivityAction } from "@/db/schema/activities";
 
@@ -258,6 +259,36 @@ function getActivityConfig(activity: ActivityItemData) {
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> updated collaborator role to{" "}
             <span className="font-semibold text-indigo-600 dark:text-indigo-400">{m.newRole}</span>
+          </span>
+        ),
+      };
+    case "TAG_CREATED":
+      return {
+        icon: <TagIcon className="h-3.5 w-3.5 text-blue-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> created tag{" "}
+            <span className="font-semibold">&quot;{m.name || "Tag"}&quot;</span>
+          </span>
+        ),
+      };
+    case "TAG_UPDATED":
+      return {
+        icon: <TagIcon className="h-3.5 w-3.5 text-amber-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> updated tag{" "}
+            <span className="font-semibold">&quot;{m.newName || m.name || "Tag"}&quot;</span>
+          </span>
+        ),
+      };
+    case "TAG_DELETED":
+      return {
+        icon: <TagIcon className="h-3.5 w-3.5 text-red-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> deleted tag{" "}
+            <span className="font-semibold line-through text-neutral-400">&quot;{m.name || "Tag"}&quot;</span>
           </span>
         ),
       };

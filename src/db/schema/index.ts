@@ -4,3 +4,4 @@ export * from "./members";
 export * from "./invitations";
 export * from "./activities";
 export * from "./notifications";
+export * from "./tags";

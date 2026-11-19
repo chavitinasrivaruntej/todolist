@@ -24,6 +24,8 @@ import {
   TODO_PRIORITIES,
 } from "@/lib/validations/todo";
 import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
+import { TagBadge } from "@/components/tags/tag-badge";
+import { TagSelector } from "@/components/tags/tag-selector";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
@@ -40,6 +42,7 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
   const [editDescription, setEditDescription] = useState(todo.description || "");
   const [editPriority, setEditPriority] = useState<TodoPriorityType>(todo.priority);
   const [editDueDate, setEditDueDate] = useState<string>(todo.dueDate || "");
+  const [editTagIds, setEditTagIds] = useState<string[]>(todo.tags?.map((t) => t.id) || []);
 
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -111,6 +114,7 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
       description: editDescription.trim() ? editDescription.trim() : null,
       priority: editPriority,
       dueDate: editDueDate ? editDueDate : null,
+      tagIds: editTagIds,
     });
   };
 
@@ -119,6 +123,7 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
     setEditDescription(todo.description || "");
     setEditPriority(todo.priority);
     setEditDueDate(todo.dueDate || "");
+    setEditTagIds(todo.tags?.map((t) => t.id) || []);
     setEditError(null);
     setIsEditing(false);
   };
@@ -140,29 +145,32 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
         return "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-900";
       case "TODO":
       default:
-        return "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700";
+        return "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700";
     }
   };
 
   return (
     <div
-      className={`group rounded-lg border bg-white p-3.5 transition-colors dark:bg-neutral-950 ${
+      className={`rounded-lg border p-3.5 transition-colors ${
         isDone
-          ? "border-neutral-200/60 dark:border-neutral-800/60 opacity-80"
-          : "border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700"
+          ? "border-neutral-200/60 bg-neutral-50/50 dark:border-neutral-800/60 dark:bg-neutral-900/20"
+          : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 shadow-2xs"
       }`}
     >
+      {/* Inline Editing Form */}
       {isEditing ? (
-        <form onSubmit={handleSaveEdit} className="space-y-3">
+        <form onSubmit={handleSaveEdit} className="space-y-2.5">
           <div>
             <label className="block text-[11px] font-medium text-neutral-500 mb-1">
-              Title
+              Title <span className="text-red-500">*</span>
             </label>
             <Input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
-              className="text-xs h-8"
               disabled={updateDetailsMutation.isPending}
+              maxLength={255}
+              className="text-xs h-8"
+              autoFocus
             />
           </div>
 
@@ -173,9 +181,11 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
             <Textarea
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              rows={2}
-              className="text-xs resize-y"
               disabled={updateDetailsMutation.isPending}
+              rows={2}
+              maxLength={1000}
+              className="text-xs resize-none"
+              placeholder="Add description..."
             />
           </div>
 
@@ -188,7 +198,7 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
                 value={editPriority}
                 onChange={(e) => setEditPriority(e.target.value as TodoPriorityType)}
                 disabled={updateDetailsMutation.isPending}
-                className="w-full h-8 text-xs rounded border border-neutral-200 bg-white px-2 dark:border-neutral-800 dark:bg-neutral-900"
+                className="h-8 w-full rounded border border-neutral-200 bg-white px-2 text-xs shadow-2xs focus-visible:outline-none dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"
               >
                 {TODO_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -210,6 +220,17 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
                 className="text-xs h-8"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-neutral-500 mb-1">
+              Tags
+            </label>
+            <TagSelector
+              listId={listId}
+              selectedTagIds={editTagIds}
+              onChange={setEditTagIds}
+            />
           </div>
 
           {editError && (
@@ -305,6 +326,15 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
               )}
             </div>
 
+            {/* Tags Row */}
+            {todo.tags && todo.tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                {todo.tags.map((tag) => (
+                  <TagBadge key={tag.id} tag={tag} size="sm" />
+                ))}
+              </div>
+            )}
+
             {todo.description && (
               <p
                 className={`text-xs whitespace-pre-wrap break-words ${
@@ -356,25 +386,32 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
         </div>
       )}
 
-      {statusError && (
-        <p className="text-[11px] text-red-600 dark:text-red-400 mt-1.5">{statusError}</p>
-      )}
-
+      {/* Delete / Status Error Feedbacks */}
       {deleteError && (
-        <div className="mt-2.5 flex items-center justify-between rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+        <div className="mt-2 flex items-center justify-between rounded-md bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
           <div className="flex items-center gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-red-500" />
+            <AlertCircle className="h-3.5 w-3.5 text-red-500" />
             <span>{deleteError}</span>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="flex items-center gap-1 font-medium underline hover:no-underline ml-2 flex-shrink-0"
+            className="h-6 px-1.5 text-xs text-red-700 dark:text-red-300"
           >
-            <RotateCcw className="h-3 w-3" />
-            <span>Retry</span>
-          </button>
+            <RotateCcw className="h-3 w-3 mr-1" />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {statusError && (
+        <div className="mt-2 flex items-center justify-between rounded-md bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+            <span>{statusError}</span>
+          </div>
         </div>
       )}
     </div>

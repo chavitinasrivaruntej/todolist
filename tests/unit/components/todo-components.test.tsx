@@ -31,6 +31,20 @@ vi.mock("@/lib/trpc/client", () => ({
         invalidate: vi.fn(),
       },
     },
+    tag: {
+      listByList: {
+        useQuery: vi.fn().mockReturnValue({ data: [], isLoading: false }),
+      },
+      create: {
+        useMutation: vi.fn(),
+      },
+      update: {
+        useMutation: vi.fn(),
+      },
+      delete: {
+        useMutation: vi.fn(),
+      },
+    },
   },
 }));
 
@@ -129,6 +143,7 @@ describe("UI Components", () => {
       dueDate: null,
       createdAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       updatedAt: new Date("2026-05-01T12:00:00Z").toISOString(),
+      tags: [],
     };
 
     it("should display title, description, and delete button", () => {

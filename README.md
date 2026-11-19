@@ -20,16 +20,16 @@ Modern task managers frequently suffer from architectural anti-patterns: bloated
 
 ## 2. Project Development Status
 
-- **Current Development Phase**: **PHASE 7**
+- **Current Development Phase**: **PHASE 8**
 - **Implementation Status**: **100% COMPLETE & VERIFIED**
-- **Repository Milestone**: **Phase 7 Project Consolidation & Verification Milestone**
+- **Repository Milestone**: **Phase 8: Color-Coded Tags, Labels & Multi-Tag Filtering Milestone**
 
 ### Milestone Summary
-The project has successfully completed seven foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, and advanced task metadata. Every layer—from Drizzle ORM schemas to React UI components—has undergone rigorous verification with 245 automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database verification.
+The project has successfully completed eight foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, and dynamic color-coded tag organization. Every layer—from Drizzle ORM schemas to React UI components—has undergone rigorous verification with 282 automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database verification.
 
 ---
 
-## 3. Implemented Features (Phases 1 – 7)
+## 3. Implemented Features (Phases 1 – 8)
 
 ### Phase 1: Core Architecture & Single-List Persistence
 - Modular monolith directory structure separating presentation, tRPC API routes, domain services, data repositories, and Drizzle schemas.
@@ -80,6 +80,17 @@ The project has successfully completed seven foundational development phases, mo
 - **Multi-Facet Filtering**: Filter concurrently by status, priority, and due date categories (`ALL`, `OVERDUE`, `TODAY`, `THIS_WEEK`, `NO_DUE_DATE`).
 - **Deterministic Multi-Key Sorting**: Multi-key sort orders with `NULLS LAST` for calendar dates and weighted `CASE` rankings for priorities, always broken deterministically by `createdAt` and unique `id`.
 - **Activity Log Delta Tracking & No-Op Suppression**: Detailed metadata capture recording previous and new values for priorities and due dates, while suppressing database writes and activity logs when mutations contain identical values.
+
+### Phase 8: Color-Coded Tags, Labels & Multi-Tag Filtering
+- **List-Scoped Tag Architecture**: Normalized relational design with `tags` table and `todo_tags` junction table (`ON DELETE CASCADE`), ensuring tags belong directly to individual lists for consistent collaborative views across all list members.
+- **Accessible 10-Color Palette**: 10 curated tag colors (`slate`, `red`, `orange`, `amber`, `emerald`, `teal`, `blue`, `indigo`, `purple`, `pink`) with WCAG-compliant contrast and colored indicator dots in light and dark modes.
+- **Case-Insensitive Duplicate Prevention**: Unique constraint and service-level case-insensitive uniqueness check (`lower(name) + listId`) preventing duplicate tag creation.
+- **Task Tag Multi-Assignment**: Many-to-many relationship allowing tasks to have multiple tags, customizable during task creation and via inline task editing.
+- **Multi-Tag Filtering Engine**: Filter tasks by one or multiple tags with toggleable **AND** (must possess all selected tags) and **OR** (possesses at least one selected tag) matching semantics, interoperable with search, status, priority, due date, and deterministic sorting.
+- **N+1 Query Elimination**: Batch tag loader (`findTagsForTodos`) loads all tags for a list view in a single relational join query, grouping tags in-memory.
+- **Full RBAC Enforcement**: List OWNER and EDITOR roles can manage and assign tags; VIEWER role is strictly read-only on all tag mutations.
+- **Tag Management Modal**: Dedicated dialog in the list toolbar for creating, renaming, recoloring, and deleting tags.
+- **Activity History Integration**: Activity logging for `TAG_CREATED`, `TAG_UPDATED`, and `TAG_DELETED` events with formatted event feeds.
 
 ---
 
@@ -313,16 +324,15 @@ Caize Todo follows a structured 12-phase development trajectory:
 [Phase 5: RBAC Collaboration & Invitations] ─► [DONE]
 [Phase 6: Notifications & Activity Audit] ──► [DONE]
 [Phase 7: Priorities, Due Dates & Search] ──► [DONE]
+[Phase 8: Tags, Labels & Multi-Filtering] ──► [DONE]
 ────────────────────────────────────────────────────
-[Phase 8: Tags, Labels & Multi-Categorization] ──► [PLANNED]
 [Phase 9: Recurring Tasks & Schedule Engine] ───► [PLANNED]
 [Phase 10: File Attachments & Asset Storage] ───► [PLANNED]
 [Phase 11: Realtime WebSockets & Live Presence] ─► [PLANNED]
 [Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
 ```
 
-### Planned Future Phases (8 – 12)
-- **Phase 8 (Planned)**: Color-coded tags, nested labels, and multi-label filtering.
+### Planned Future Phases (9 – 12)
 - **Phase 9 (Planned)**: Recurring task schedules (daily, weekly, custom cron intervals) with automatic re-creation.
 - **Phase 10 (Planned)**: File attachments, document previews, and asset storage integration via Supabase Storage.
 - **Phase 11 (Planned)**: Supabase Realtime WebSocket subscriptions for live collaborator presence and instant board sync.
@@ -330,13 +340,13 @@ Caize Todo follows a structured 12-phase development trajectory:
 
 ---
 
-## 11. Phase 7 — Project Consolidation Milestone
+## 11. Phase 8 — Color-Coded Tags & Labels Milestone
 
-This checkpoint marks the official completion and consolidation of **Phase 7**. All planned architectural pillars through Phase 7 are implemented, fully tested, documented, and synchronized to GitHub.
+This checkpoint marks the official completion, verification, and consolidation of **Phase 8**. All functional and architectural requirements for color-coded tags, task assignment, multi-tag filtering with AND/OR logic, and collaborative RBAC are implemented, fully tested, documented, and synchronized to GitHub.
 
-- **Verified Test Metrics**: 30 test suites, 245 passing tests, 0 failures.
-- **Build Status**: Production Next.js 16 build verified.
-- **Database Status**: Migration 0006 synchronized and verified live on Supabase PostgreSQL.
+- **Verified Test Metrics**: 34 test suites, 282 passing tests, 0 failures.
+- **Build Status**: Production Next.js 16 build verified (`npm run build`).
+- **Database Status**: Migration 0007 applied and verified live on Supabase PostgreSQL.
 - **Git Milestone**: Backed up and synchronized with `origin/main` on GitHub.
 
-The repository is fully stabilized and positioned for Phase 8 development.
+The repository is fully stabilized and positioned for Phase 9 development.

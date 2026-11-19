@@ -14,9 +14,12 @@ export type ActivityAction =
   | "MEMBER_JOINED"
   | "MEMBER_REMOVED"
   | "MEMBER_LEFT"
-  | "MEMBER_ROLE_CHANGED";
+  | "MEMBER_ROLE_CHANGED"
+  | "TAG_CREATED"
+  | "TAG_UPDATED"
+  | "TAG_DELETED";
 
-export type ActivityEntityType = "TODO" | "LIST" | "INVITATION" | "MEMBER";
+export type ActivityEntityType = "TODO" | "LIST" | "INVITATION" | "MEMBER" | "TAG";
 
 /**
  * ActivityLogs Table Definition

@@ -102,7 +102,7 @@ describe("TodoRepository", () => {
       expect(mockSelect).toHaveBeenCalled();
       expect(mockFrom).toHaveBeenCalledWith(todos);
       expect(mockWhere).toHaveBeenCalled();
-      expect(result).toEqual(records);
+      expect(result).toEqual(records.map((r) => ({ ...r, tags: [] })));
     });
   });
 

@@ -10,11 +10,13 @@ import { KanbanBoard } from "@/components/todos/kanban/kanban-board";
 import { ActivityTimeline } from "@/components/todos/activity/activity-timeline";
 import { ViewSwitcher } from "@/components/todos/view-switcher";
 import { TaskFilterBar, type TaskFilterState } from "@/components/todos/task-filter-bar";
+import { TagManagerDialog } from "@/components/tags/tag-manager-dialog";
 import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { UserMenu } from "@/components/auth/user-menu";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ShareListDialog } from "@/components/sharing/share-list-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   ListTodo,
   CheckCircle2,
@@ -22,6 +24,7 @@ import {
   Eye,
   Crown,
   Loader2,
+  Tag as TagIcon,
 } from "lucide-react";
 
 const initialFilters: TaskFilterState = {
@@ -30,6 +33,8 @@ const initialFilters: TaskFilterState = {
   dueFilter: "ALL",
   sortBy: "created",
   sortDirection: "desc",
+  tagIds: undefined,
+  tagOperator: "AND",
 };
 
 function TodoDashboardInner() {
@@ -38,8 +43,13 @@ function TodoDashboardInner() {
   const [selectedListId, setSelectedListId] = useState<string | null>(urlListId);
   const [filters, setFilters] = useState<TaskFilterState>(initialFilters);
   const [filteredCount, setFilteredCount] = useState<number | undefined>(undefined);
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
 
   const { data: lists, isLoading } = trpc.todoList.list.useQuery();
+  const { data: listTags = [] } = trpc.tag.listByList.useQuery(
+    { listId: selectedListId! },
+    { enabled: Boolean(selectedListId) }
+  );
   const { viewMode, setViewMode } = useListViewPreference(selectedListId);
 
   // Automatically select first list or urlListId when lists are loaded
@@ -90,7 +100,7 @@ function TodoDashboardInner() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 7: Task Management & Productivity
+              Phase 8: Color-Coded Tags & Labels
             </Badge>
           </div>
           <div className="flex items-center gap-2">
@@ -99,7 +109,7 @@ function TodoDashboardInner() {
           </div>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Priorities, calendar due dates, overdue tracking, instant search, deterministic sorting, and activity history.
+          Priorities, calendar due dates, color-coded tags & labels, multi-tag filtering, deterministic sorting, and activity history.
         </p>
       </header>
 
@@ -153,6 +163,19 @@ function TodoDashboardInner() {
                 </div>
 
                 <div className="flex items-center gap-2 ml-auto">
+                  {/* Tags Manager Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsTagManagerOpen(true)}
+                    className="h-8 gap-1.5 text-xs border-neutral-300 dark:border-neutral-700"
+                    title="Manage list tags and labels"
+                    aria-label="Manage tags"
+                  >
+                    <TagIcon className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Tags</span>
+                  </Button>
+
                   {/* Share button only available for OWNER */}
                   {isOwner && (
                     <ShareListDialog
@@ -164,6 +187,15 @@ function TodoDashboardInner() {
                   <ViewSwitcher currentView={viewMode} onViewChange={setViewMode} />
                 </div>
               </div>
+
+              {/* Tag Manager Dialog */}
+              <TagManagerDialog
+                listId={activeList.id}
+                listName={activeList.name}
+                isReadOnly={isReadOnly}
+                isOpen={isTagManagerOpen}
+                onOpenChange={setIsTagManagerOpen}
+              />
 
               {/* Role Context Banners */}
               {isReadOnly && (
@@ -187,7 +219,12 @@ function TodoDashboardInner() {
               {/* Task Creation Form (Hidden for Viewers and when in Activity view) */}
               {!isReadOnly && viewMode !== "activity" && (
                 <section aria-label={`Task creation for ${activeList.name}`}>
-                  <TodoForm listId={activeList.id} listName={activeList.name} />
+                  <TodoForm
+                    listId={activeList.id}
+                    listName={activeList.name}
+                    availableTags={listTags}
+                    onManageTags={() => setIsTagManagerOpen(true)}
+                  />
                 </section>
               )}
 
@@ -199,6 +236,7 @@ function TodoDashboardInner() {
                     onFilterChange={handleFilterChange}
                     onReset={handleResetFilters}
                     taskCount={filteredCount}
+                    availableTags={listTags}
                   />
                 </section>
               )}

@@ -194,6 +194,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
           dueDate: null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          tags: [],
         };
       });
 
@@ -219,6 +220,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
           dueDate: null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          tags: [],
         };
       });
 
@@ -296,6 +298,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
         dueDate: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        tags: [],
       });
 
       vi.spyOn(todoService, "updateStatus").mockResolvedValue({
@@ -308,6 +311,7 @@ describe("Multi-Tenant Cross-User Isolation & Security Audit", () => {
         dueDate: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        tags: [],
       });
 
       vi.spyOn(todoService, "deleteTodo").mockResolvedValue({

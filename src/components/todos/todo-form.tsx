@@ -13,18 +13,23 @@ import {
   TODO_STATUSES,
   TODO_PRIORITIES,
 } from "@/lib/validations/todo";
+import { type Tag } from "@/db/schema/tags";
+import { TagSelector } from "@/components/tags/tag-selector";
 
 interface TodoFormProps {
   listId: string;
   listName: string;
+  availableTags?: Array<{ id: string; name: string; color: string; listId?: string }>;
+  onManageTags?: () => void;
 }
 
-export function TodoForm({ listId, listName }: TodoFormProps) {
+export function TodoForm({ listId, listName, availableTags, onManageTags }: TodoFormProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TodoStatusType>("TODO");
   const [priority, setPriority] = useState<TodoPriorityType>("MEDIUM");
   const [dueDate, setDueDate] = useState<string>("");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
@@ -36,6 +41,7 @@ export function TodoForm({ listId, listName }: TodoFormProps) {
       setStatus("TODO");
       setPriority("MEDIUM");
       setDueDate("");
+      setSelectedTagIds([]);
       setValidationError(null);
       await Promise.all([
         utils.todo.list.invalidate({ listId }),
@@ -64,6 +70,7 @@ export function TodoForm({ listId, listName }: TodoFormProps) {
       status,
       priority,
       dueDate: dueDate ? dueDate : null,
+      tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
     });
   };
 
@@ -74,7 +81,7 @@ export function TodoForm({ listId, listName }: TodoFormProps) {
           Add Task to <span className="font-semibold text-neutral-900 dark:text-neutral-50">{listName}</span>
         </CardTitle>
         <CardDescription className="text-xs">
-          Create a task with priority, optional due date, and notes.
+          Create a task with priority, optional due date, tags, and notes.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -103,13 +110,13 @@ export function TodoForm({ listId, listName }: TodoFormProps) {
             </label>
             <Textarea
               id="todo-desc"
-              placeholder="Additional details..."
+              placeholder="Add details, links, or notes..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={createMutation.isPending}
               rows={2}
               maxLength={1000}
-              className="bg-neutral-50/50 dark:bg-neutral-900/50 resize-y text-xs"
+              className="bg-neutral-50/50 dark:bg-neutral-900/50 text-xs resize-none"
             />
           </div>
 
@@ -174,6 +181,20 @@ export function TodoForm({ listId, listName }: TodoFormProps) {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Tags Selector */}
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+              Tags (optional)
+            </label>
+            <TagSelector
+              listId={listId}
+              availableTags={availableTags}
+              selectedTagIds={selectedTagIds}
+              onChange={setSelectedTagIds}
+              onManageTags={onManageTags}
+            />
           </div>
 
           {validationError && (

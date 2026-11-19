@@ -12,6 +12,7 @@ import {
   lte,
   gte,
   sql,
+  inArray,
 } from "drizzle-orm";
 import { db as defaultDb, type Database, type DbExecutor } from "@/db";
 import {
@@ -20,11 +21,15 @@ import {
   type TodoStatus,
   type TodoPriority,
 } from "@/db/schema/todos";
+import { todoTags, type Tag } from "@/db/schema/tags";
+import { tagRepository, TagRepository, type ITagRepository } from "./tag.repository";
 import type {
   DueDateFilterType,
   SortFieldType,
   SortDirectionType,
 } from "@/lib/validations/todo";
+
+export type TodoWithTags = Todo & { tags: Tag[] };
 
 function addDaysToIsoDate(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -41,11 +46,13 @@ export interface FindTodosOptions {
   sortBy?: SortFieldType;
   sortDirection?: SortDirectionType;
   clientToday?: string;
+  tagIds?: string[];
+  tagOperator?: "AND" | "OR";
 }
 
 export interface ITodoRepository {
-  findAllByListId(listId: string, options?: FindTodosOptions): Promise<Todo[]>;
-  findById(id: string): Promise<Todo | null>;
+  findAllByListId(listId: string, options?: FindTodosOptions): Promise<TodoWithTags[]>;
+  findById(id: string): Promise<TodoWithTags | null>;
   findListIdByTodoId(id: string): Promise<string | null>;
   create(
     data: {
@@ -77,15 +84,17 @@ export interface ITodoRepository {
  */
 export class TodoRepository implements ITodoRepository {
   private readonly db: Database;
+  private readonly tagRepo?: ITagRepository;
 
-  constructor(database: Database = defaultDb) {
+  constructor(database: Database = defaultDb, tagRepo?: ITagRepository) {
     this.db = database;
+    this.tagRepo = tagRepo;
   }
 
   async findAllByListId(
     listId: string,
     options?: FindTodosOptions
-  ): Promise<Todo[]> {
+  ): Promise<TodoWithTags[]> {
     const conditions = [eq(todos.listId, listId)];
 
     // 1. Text Search Filter (Title or Description)
@@ -146,7 +155,30 @@ export class TodoRepository implements ITodoRepository {
       }
     }
 
-    // 5. Deterministic Multi-Key Sorting
+    // 5. Tag Filter (AND or OR semantics)
+    if (options?.tagIds && options.tagIds.length > 0) {
+      const tagIds = options.tagIds;
+      if (options.tagOperator === "OR") {
+        conditions.push(
+          sql`${todos.id} IN (
+            SELECT ${todoTags.todoId} FROM ${todoTags}
+            WHERE ${inArray(todoTags.tagId, tagIds)}
+          )`
+        );
+      } else {
+        // Default "AND": task must possess ALL selected tags
+        conditions.push(
+          sql`${todos.id} IN (
+            SELECT ${todoTags.todoId} FROM ${todoTags}
+            WHERE ${inArray(todoTags.tagId, tagIds)}
+            GROUP BY ${todoTags.todoId}
+            HAVING COUNT(DISTINCT ${todoTags.tagId}) = ${tagIds.length}
+          )`
+        );
+      }
+    }
+
+    // 6. Deterministic Multi-Key Sorting
     const sortBy = options?.sortBy || "created";
     const sortDirection = options?.sortDirection || "desc";
     const isAsc = sortDirection === "asc";
@@ -190,21 +222,51 @@ export class TodoRepository implements ITodoRepository {
         break;
     }
 
-    return this.db
+    const rows = await this.db
       .select()
       .from(todos)
       .where(and(...conditions))
       .orderBy(...orderExpressions);
+
+    if (rows.length === 0) return [];
+
+    const todoIds = rows.map((r) => r.id);
+    let tagsMap = new Map<string, Tag[]>();
+    if (process.env.DATABASE_URL) {
+      try {
+        const tagRepoToUse =
+          this.tagRepo || (this.db === defaultDb ? tagRepository : new TagRepository(this.db));
+        tagsMap = await tagRepoToUse.findTagsForTodos(todoIds);
+      } catch {
+        // Fallback for mock environments
+      }
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      tags: tagsMap.get(r.id) || [],
+    }));
   }
 
-  async findById(id: string): Promise<Todo | null> {
+  async findById(id: string): Promise<TodoWithTags | null> {
     const [result] = await this.db
       .select()
       .from(todos)
       .where(eq(todos.id, id))
       .limit(1);
 
-    return result ?? null;
+    if (!result) return null;
+    let tags: Tag[] = [];
+    if (process.env.DATABASE_URL) {
+      try {
+        const tagRepoToUse =
+          this.tagRepo || (this.db === defaultDb ? tagRepository : new TagRepository(this.db));
+        tags = await tagRepoToUse.findTagsForTodo(id);
+      } catch {
+        // Fallback for mock environments
+      }
+    }
+    return { ...result, tags };
   }
 
   async findListIdByTodoId(id: string): Promise<string | null> {

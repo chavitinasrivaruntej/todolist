@@ -3,7 +3,7 @@ import { TodoService } from "@/server/services/todo.service";
 import { type ITodoRepository } from "@/server/repositories/todo.repository";
 import { ListPermissionService } from "@/server/services/list-permission.service";
 import { ActivityService } from "@/server/services/activity.service";
-import { type Todo } from "@/db/schema/todos";
+import { type TodoWithTags } from "@/server/repositories/todo.repository";
 import { NotFoundError, ValidationError } from "@/server/errors";
 
 describe("TodoService", () => {
@@ -15,7 +15,7 @@ describe("TodoService", () => {
   const testUserId = "user-test-uuid";
   const mockDate = new Date("2026-01-01T00:00:00.000Z");
   const sampleListId = "123e4567-e89b-42d3-a456-426614174001";
-  const sampleTodo: Todo = {
+  const sampleTodo: TodoWithTags = {
     id: "123e4567-e89b-12d3-a456-426614174000",
     listId: sampleListId,
     title: "Test Todo",
@@ -25,6 +25,7 @@ describe("TodoService", () => {
     dueDate: null,
     createdAt: mockDate,
     updatedAt: mockDate,
+    tags: [],
   };
 
   beforeEach(() => {

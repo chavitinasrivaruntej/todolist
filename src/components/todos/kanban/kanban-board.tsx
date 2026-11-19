@@ -46,6 +46,8 @@ export function KanbanBoard({
     dueFilter: filters?.dueFilter,
     sortBy: filters?.sortBy,
     sortDirection: filters?.sortDirection,
+    tagIds: filters?.tagIds && filters.tagIds.length > 0 ? filters.tagIds : undefined,
+    tagOperator: filters?.tagOperator,
   };
 
   const {

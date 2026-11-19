@@ -1,7 +1,12 @@
 import {
   type ITodoRepository,
+  type TodoWithTags,
   todoRepository as defaultRepository,
 } from "@/server/repositories/todo.repository";
+import {
+  type ITagRepository,
+  tagRepository as defaultTagRepo,
+} from "@/server/repositories/tag.repository";
 import {
   ListPermissionService,
   listPermissionService as defaultPermissionService,
@@ -17,7 +22,8 @@ import {
   type GetTodosByListInput,
   type UpdateTodoStatusInput,
 } from "@/lib/validations/todo";
-import { type Todo, type TodoStatus, type TodoPriority } from "@/db/schema/todos";
+import { type TodoStatus, type TodoPriority } from "@/db/schema/todos";
+import { type Tag } from "@/db/schema/tags";
 import { NotFoundError, ValidationError } from "@/server/errors";
 
 export interface CreateTodoServiceInput {
@@ -27,6 +33,7 @@ export interface CreateTodoServiceInput {
   status?: TodoStatus;
   priority?: TodoPriority;
   dueDate?: string | null;
+  tagIds?: string[];
 }
 
 export interface UpdateTodoDetailsServiceInput {
@@ -35,6 +42,7 @@ export interface UpdateTodoDetailsServiceInput {
   description?: string | null;
   priority?: TodoPriority;
   dueDate?: string | null;
+  tagIds?: string[];
 }
 
 /**
@@ -43,6 +51,7 @@ export interface UpdateTodoDetailsServiceInput {
  */
 export class TodoService {
   private readonly repository: ITodoRepository;
+  private readonly tagRepository: ITagRepository;
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
   private readonly db: Database;
@@ -51,23 +60,25 @@ export class TodoService {
     repository: ITodoRepository = defaultRepository,
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
-    database: Database = defaultDb
+    database: Database = defaultDb,
+    tagRepository: ITagRepository = defaultTagRepo
   ) {
     this.repository = repository;
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.db = database;
+    this.tagRepository = tagRepository;
   }
 
   /**
    * Retrieves todo items belonging to a specific list.
    * Allowed for OWNER, EDITOR, and VIEWER roles.
-   * Supports search, status, priority, due date filtering, and deterministic multi-key sorting.
+   * Supports search, status, priority, due date filtering, tag filtering, and deterministic multi-key sorting.
    */
   async getTodosByList(
     input: GetTodosByListInput,
     userId: string
-  ): Promise<Todo[]> {
+  ): Promise<TodoWithTags[]> {
     await this.permissionService.requireCanReadList(userId, input.listId);
     return this.repository.findAllByListId(input.listId, {
       search: input.search,
@@ -77,17 +88,19 @@ export class TodoService {
       sortBy: input.sortBy ?? "created",
       sortDirection: input.sortDirection ?? "desc",
       clientToday: input.clientToday,
+      tagIds: input.tagIds,
+      tagOperator: input.tagOperator ?? "AND",
     });
   }
 
   /**
-   * Creates a new todo item within a list atomically with its activity log.
+   * Creates a new todo item within a list atomically with its tags and activity log.
    * Allowed for OWNER and EDITOR roles. Blocked for VIEWER roles.
    */
   async createTodo(
     input: CreateTodoServiceInput,
     userId: string
-  ): Promise<Todo> {
+  ): Promise<TodoWithTags> {
     const trimmedTitle = input.title.trim();
     if (!trimmedTitle) {
       throw new ValidationError(
@@ -96,6 +109,19 @@ export class TodoService {
     }
 
     await this.permissionService.requireCanMutateTodos(userId, input.listId);
+
+    // Verify all specified tags belong to this list
+    let assignedTags: Tag[] = [];
+    if (input.tagIds && input.tagIds.length > 0) {
+      const verified = await this.tagRepository.findByIdsAndListId(
+        input.tagIds,
+        input.listId
+      );
+      if (verified.length !== input.tagIds.length) {
+        throw new ValidationError("One or more selected tags do not belong to this list.");
+      }
+      assignedTags = verified;
+    }
 
     return withTransaction(this.db, async (tx) => {
       const todoData = {
@@ -111,6 +137,10 @@ export class TodoService {
         ? await this.repository.create(todoData, tx)
         : await this.repository.create(todoData);
 
+      if (input.tagIds && input.tagIds.length > 0) {
+        await this.tagRepository.assignTagsToTodo(created.id, input.tagIds, tx);
+      }
+
       await this.activityService.logActivity(
         {
           listId: input.listId,
@@ -123,12 +153,16 @@ export class TodoService {
             status: created.status,
             priority: created.priority,
             dueDate: created.dueDate ?? null,
+            tagCount: input.tagIds?.length || 0,
           },
         },
         tx
       );
 
-      return created;
+      return {
+        ...created,
+        tags: assignedTags,
+      };
     });
   }
 
@@ -139,7 +173,7 @@ export class TodoService {
   async updateStatus(
     input: UpdateTodoStatusInput,
     userId: string
-  ): Promise<Todo> {
+  ): Promise<TodoWithTags> {
     const listId = await this.repository.findListIdByTodoId(input.id);
     if (!listId) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
@@ -182,7 +216,7 @@ export class TodoService {
         tx
       );
 
-      return updated;
+      return { ...updated, tags: existing.tags };
     });
   }
 
@@ -194,7 +228,7 @@ export class TodoService {
   async updateDetails(
     input: UpdateTodoDetailsServiceInput,
     userId: string
-  ): Promise<Todo> {
+  ): Promise<TodoWithTags> {
     const listId = await this.repository.findListIdByTodoId(input.id);
     if (!listId) {
       throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
@@ -226,8 +260,34 @@ export class TodoService {
       input.dueDate !== undefined &&
       (input.dueDate ?? null) !== (existing.dueDate ?? null);
 
+    let tagsChanged = false;
+    let verifiedTags: Tag[] = [];
+    if (input.tagIds !== undefined) {
+      verifiedTags = await this.tagRepository.findByIdsAndListId(
+        input.tagIds,
+        listId
+      );
+      if (verifiedTags.length !== input.tagIds.length) {
+        throw new ValidationError("One or more selected tags do not belong to this list.");
+      }
+      const existingTagIds = new Set((existing.tags || []).map((t) => t.id));
+      const newTagIds = new Set(input.tagIds);
+      if (
+        existingTagIds.size !== newTagIds.size ||
+        ![...existingTagIds].every((id) => newTagIds.has(id))
+      ) {
+        tagsChanged = true;
+      }
+    }
+
     // Suppress no-op mutations
-    if (!titleChanged && !descChanged && !priorityChanged && !dueDateChanged) {
+    if (
+      !titleChanged &&
+      !descChanged &&
+      !priorityChanged &&
+      !dueDateChanged &&
+      !tagsChanged
+    ) {
       return existing;
     }
 
@@ -245,6 +305,10 @@ export class TodoService {
 
       if (!updated) {
         throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+      }
+
+      if (tagsChanged && input.tagIds !== undefined) {
+        await this.tagRepository.syncTagsForTodo(input.id, input.tagIds, tx);
       }
 
       const metadata: Record<string, unknown> = {
@@ -266,6 +330,10 @@ export class TodoService {
         metadata.previousDueDate = existing.dueDate ?? null;
         metadata.newDueDate = updated.dueDate ?? null;
       }
+      if (tagsChanged) {
+        metadata.tagsChanged = true;
+        metadata.tagCount = input.tagIds?.length || 0;
+      }
 
       await this.activityService.logActivity(
         {
@@ -279,7 +347,10 @@ export class TodoService {
         tx
       );
 
-      return updated;
+      return {
+        ...updated,
+        tags: input.tagIds !== undefined ? verifiedTags : existing.tags,
+      };
     });
   }
 

@@ -43,6 +43,8 @@ export const getTodosByListSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid client today date format")
     .optional(),
+  tagIds: z.array(z.string().uuid("Invalid Tag ID format")).optional(),
+  tagOperator: z.enum(["AND", "OR"]).optional().default("AND"),
 });
 
 /**
@@ -64,6 +66,7 @@ export const createTodoSchema = z.object({
   status: z.enum(TODO_STATUSES).optional().default("TODO"),
   priority: z.enum(TODO_PRIORITIES).optional().default("MEDIUM"),
   dueDate: dateStringSchema,
+  tagIds: z.array(z.string().uuid("Invalid Tag ID format")).optional(),
 });
 
 /**
@@ -75,7 +78,7 @@ export const updateTodoStatusSchema = z.object({
 });
 
 /**
- * Validation schema for updating a Todo's title, description, priority, and due date.
+ * Validation schema for updating a Todo's title, description, priority, due date, and tags.
  */
 export const updateTodoDetailsSchema = z.object({
   id: z.string().uuid("Invalid todo ID format"),
@@ -93,6 +96,7 @@ export const updateTodoDetailsSchema = z.object({
     .transform((val) => (val === "" || val === null || val === undefined ? null : val)),
   priority: z.enum(TODO_PRIORITIES).optional(),
   dueDate: dateStringSchema,
+  tagIds: z.array(z.string().uuid("Invalid Tag ID format")).optional(),
 });
 
 /**

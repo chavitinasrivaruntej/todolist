@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { type TodoStatusType } from "@/lib/validations/todo";
 import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
+import { TagBadge } from "@/components/tags/tag-badge";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
@@ -174,6 +175,15 @@ export function KanbanCard({
         <PriorityBadge priority={todo.priority} />
         <DueDateBadge dueDate={todo.dueDate} status={todo.status} />
       </div>
+
+      {/* Tags Badges */}
+      {todo.tags && todo.tags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 mt-1 pl-5 select-none">
+          {todo.tags.map((tag) => (
+            <TagBadge key={tag.id} tag={tag} size="sm" />
+          ))}
+        </div>
+      )}
 
       {/* Description */}
       {todo.description && (
