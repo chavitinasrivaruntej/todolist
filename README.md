@@ -179,7 +179,11 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
       │
       ├──< todo_lists (id, user_id, name, created_at, updated_at)
       │        │
-      │        ├──< todos (id, list_id, title, description, status, priority, due_date, created_at, updated_at)
+      │        ├──< recurrence_rules (id, list_id, frequency, interval, start_date, end_date, max_occurrences, status, next_due_date, ...)
+      │        │        │
+      │        │        └──< todos (id, list_id, recurrence_rule_id, occurrence_number, title, description, status, priority, due_date, ...)
+      │        │                 │
+      │        │                 └──< todo_tags (todo_id, tag_id) >── tags (id, list_id, name, color)
       │        │
       │        ├──< list_members (id, list_id, user_id, role ['OWNER','EDITOR','VIEWER'], joined_at)
       │        │
@@ -195,6 +199,10 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `todos_list_id_created_at_idx`: Composite index on `todos(list_id, created_at)` for chronological retrieval.
 - `todos_list_id_due_date_idx`: Composite index on `todos(list_id, due_date ASC NULLS LAST)` for calendar-based queries.
 - `todos_list_id_priority_idx`: Composite index on `todos(list_id, priority)` for priority facet filtering.
+- `todos_recurrence_rule_occurrence_unique`: Monotonic composite unique constraint on `todos(recurrence_rule_id, occurrence_number)` ensuring idempotent occurrence generation.
+- `recurrence_rules_list_id_idx`: Index on `recurrence_rules(list_id)` for fast list-scoped schedule resolution.
+- `recurrence_rules_status_next_due_idx`: Composite index on `recurrence_rules(status, next_due_date)` for high-throughput sweeper cron queries.
+- `tags_list_id_idx` & `tags_list_id_name_unique`: Case-insensitive unique constraint on tag names per list.
 - `activity_logs_composite_pagination_idx`: Keyset pagination index on `activity_logs(list_id, created_at DESC, id DESC)`.
 - `notifications_user_unread_idx`: Composite index on `notifications(user_id, is_read, created_at DESC)` for fast unread count queries.
 
@@ -206,6 +214,8 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `0004_list_sharing_and_collaboration.sql`: Collaborative roles (`list_members`), invitations, and permission triggers.
 - `0005_notifications_and_activity.sql`: Notification center tables and immutable activity audit logs.
 - `0006_task_priorities_and_due_dates.sql`: Task priorities (`todo_priority` enum), calendar due dates, and composite indexes.
+- `0007_tags_and_labels.sql`: Color-coded tag definitions, task junction mappings, and multi-tag filtering indexes.
+- `0008_recurring_tasks_and_schedules.sql`: Recurrence schedule templates, recurrence enums, series tracking counters, and unique occurrence constraints.
 
 ---
 
@@ -283,8 +293,8 @@ Caize Todo adheres to rigorous automated quality gates:
 ```bash
 npm test
 ```
-- **30 test files**, **245 unit and integration tests** passing (100% pass rate).
-- Full coverage across validations, repositories, domain services, tRPC routers, authorization checks, and React UI components.
+- **38 test files**, **323 unit and integration tests** passing (100% pass rate).
+- Full coverage across validations, repositories, domain services, recurrence calculation engine, tRPC routers, authorization checks, and React UI components.
 
 ### TypeScript Compilation Check
 ```bash
@@ -304,12 +314,6 @@ npm run build
 ```
 - Production compilation with Next.js Turbopack: **Exit Code 0** across all static, dynamic, and proxy routes.
 
-### Live Supabase Verification Script
-```bash
-npx tsx scripts/verify-phase7-live.ts
-```
-- Executes an end-to-end operational check against live Supabase PostgreSQL (task creation, overdue validation, deterministic sorting, activity metadata delta logging, and automated cleanup).
-
 ---
 
 ## 10. Long-Term Project Roadmap (12 Phases)
@@ -325,28 +329,30 @@ Caize Todo follows a structured 12-phase development trajectory:
 [Phase 6: Notifications & Activity Audit] ──► [DONE]
 [Phase 7: Priorities, Due Dates & Search] ──► [DONE]
 [Phase 8: Tags, Labels & Multi-Filtering] ──► [DONE]
+[Phase 9: Recurring Tasks & Schedule Engine] ► [DONE]
 ────────────────────────────────────────────────────
-[Phase 9: Recurring Tasks & Schedule Engine] ───► [PLANNED]
 [Phase 10: File Attachments & Asset Storage] ───► [PLANNED]
 [Phase 11: Realtime WebSockets & Live Presence] ─► [PLANNED]
 [Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
 ```
 
-### Planned Future Phases (9 – 12)
-- **Phase 9 (Planned)**: Recurring task schedules (daily, weekly, custom cron intervals) with automatic re-creation.
+### Planned Future Phases (10 – 12)
 - **Phase 10 (Planned)**: File attachments, document previews, and asset storage integration via Supabase Storage.
 - **Phase 11 (Planned)**: Supabase Realtime WebSocket subscriptions for live collaborator presence and instant board sync.
 - **Phase 12 (Planned)**: Productivity metrics, weekly completion trends, velocity charts, and CSV/JSON export.
 
 ---
 
-## 11. Phase 8 — Color-Coded Tags & Labels Milestone
+## 11. Phase 9 — Recurring Tasks & Scheduling Engine Milestone
 
-This checkpoint marks the official completion, verification, and consolidation of **Phase 8**. All functional and architectural requirements for color-coded tags, task assignment, multi-tag filtering with AND/OR logic, and collaborative RBAC are implemented, fully tested, documented, and synchronized to GitHub.
+This checkpoint marks the official completion, verification, and consolidation of **Phase 9**. All functional and architectural requirements for recurring tasks, multi-frequency schedule calculation, occurrence idempotency, task completion generation, manual catch-up, and background cron processing are implemented, fully tested, documented, and synchronized to GitHub:
 
-- **Verified Test Metrics**: 34 test suites, 282 passing tests, 0 failures.
+- **Recurrence Engine**: Pure UTC date arithmetic engine supporting `DAILY`, `WEEKLY` (arbitrary weekday sets with fixed weekly anchor avoiding interval drift), `MONTHLY` (anchor day-of-month preserving clamped targets e.g. Jan 31 $\to$ Feb 28 $\to$ Mar 31), `YEARLY` (preserving leap-year Feb 29 targets), and bounded `CUSTOM` intervals.
+- **Occurrence Idempotency**: Series tracking via monotonic `UNIQUE(recurrence_rule_id, occurrence_number)` constraint preventing duplicate generation under concurrent completions, rescheduled tasks, or network retries.
+- **Pure CQRS Read Invariance**: Normal task listing queries (`todo.list`) remain strictly read-only with 0 side-effects. Occurrence generation occurs deterministically on task completion (`handleTaskCompletion`), manual list catch-up RPC (`recurrence.syncCatchUp`), and automated background cron (`/api/cron/recurring-tasks`).
+- **Verified Test Metrics**: 38 test suites, 323 passing tests, 0 failures.
 - **Build Status**: Production Next.js 16 build verified (`npm run build`).
-- **Database Status**: Migration 0007 applied and verified live on Supabase PostgreSQL.
-- **Git Milestone**: Backed up and synchronized with `origin/main` on GitHub.
+- **Database Status**: Migration 0008 applied and verified live on Supabase PostgreSQL.
+- **Git Milestone**: Synchronized with `origin/main` on GitHub.
 
 The repository is fully stabilized and positioned for Phase 9 development.

@@ -62,6 +62,8 @@ export interface ITodoRepository {
       status?: TodoStatus;
       priority?: TodoPriority;
       dueDate?: string | null;
+      recurrenceRuleId?: string | null;
+      occurrenceNumber?: number | null;
     },
     tx?: DbExecutor
   ): Promise<Todo>;
@@ -77,6 +79,16 @@ export interface ITodoRepository {
     tx?: DbExecutor
   ): Promise<Todo | null>;
   delete(id: string, tx?: DbExecutor): Promise<boolean>;
+  findByRecurrenceRuleAndOccurrence(
+    recurrenceRuleId: string,
+    occurrenceNumber: number,
+    tx?: DbExecutor
+  ): Promise<Todo | null>;
+  findActiveOccurrenceByRuleId(
+    recurrenceRuleId: string,
+    tx?: DbExecutor
+  ): Promise<Todo | null>;
+  detachRecurrence(id: string, tx?: DbExecutor): Promise<Todo | null>;
 }
 
 /**
@@ -287,20 +299,26 @@ export class TodoRepository implements ITodoRepository {
       status?: TodoStatus;
       priority?: TodoPriority;
       dueDate?: string | null;
+      recurrenceRuleId?: string | null;
+      occurrenceNumber?: number | null;
     },
     tx?: DbExecutor
   ): Promise<Todo> {
     const executor = tx ?? this.db;
+    const values: typeof todos.$inferInsert = {
+      listId: data.listId,
+      title: data.title,
+      description: data.description ?? null,
+      status: data.status ?? "TODO",
+      priority: data.priority ?? "MEDIUM",
+      dueDate: data.dueDate ?? null,
+      recurrenceRuleId: data.recurrenceRuleId ?? null,
+      occurrenceNumber: data.occurrenceNumber ?? null,
+    };
+
     const [created] = await executor
       .insert(todos)
-      .values({
-        listId: data.listId,
-        title: data.title,
-        description: data.description ?? null,
-        status: data.status ?? "TODO",
-        priority: data.priority ?? "MEDIUM",
-        dueDate: data.dueDate ?? null,
-      })
+      .values(values)
       .returning();
 
     if (!created) {
@@ -364,6 +382,61 @@ export class TodoRepository implements ITodoRepository {
       .returning({ id: todos.id });
 
     return deleted.length > 0;
+  }
+
+  async findByRecurrenceRuleAndOccurrence(
+    recurrenceRuleId: string,
+    occurrenceNumber: number,
+    tx?: DbExecutor
+  ): Promise<Todo | null> {
+    const executor = tx ?? this.db;
+    const [found] = await executor
+      .select()
+      .from(todos)
+      .where(
+        and(
+          eq(todos.recurrenceRuleId, recurrenceRuleId),
+          eq(todos.occurrenceNumber, occurrenceNumber)
+        )
+      )
+      .limit(1);
+
+    return found ?? null;
+  }
+
+  async findActiveOccurrenceByRuleId(
+    recurrenceRuleId: string,
+    tx?: DbExecutor
+  ): Promise<Todo | null> {
+    const executor = tx ?? this.db;
+    const [active] = await executor
+      .select()
+      .from(todos)
+      .where(
+        and(
+          eq(todos.recurrenceRuleId, recurrenceRuleId),
+          ne(todos.status, "DONE")
+        )
+      )
+      .orderBy(desc(todos.occurrenceNumber))
+      .limit(1);
+
+    return active ?? null;
+  }
+
+  async detachRecurrence(id: string, tx?: DbExecutor): Promise<Todo | null> {
+    const executor = tx ?? this.db;
+    const [updated] = await executor
+      .update(todos)
+      .set({
+        recurrenceRuleId: null,
+        occurrenceNumber: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(todos.id, id))
+      .returning();
+
+    return updated ?? null;
   }
 }
 

@@ -5,3 +5,4 @@ export * from "./invitations";
 export * from "./activities";
 export * from "./notifications";
 export * from "./tags";
+export * from "./recurrence";

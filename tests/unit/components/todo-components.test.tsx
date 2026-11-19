@@ -45,6 +45,22 @@ vi.mock("@/lib/trpc/client", () => ({
         useMutation: vi.fn(),
       },
     },
+    recurrence: {
+      create: {
+        useMutation: vi.fn().mockReturnValue({
+          mutate: vi.fn(),
+          isPending: false,
+        }),
+      },
+      getByList: {
+        useQuery: vi.fn().mockReturnValue({ data: [], isLoading: false }),
+      },
+    },
+    activity: {
+      listByList: {
+        invalidate: vi.fn(),
+      },
+    },
   },
 }));
 
@@ -63,6 +79,16 @@ describe("UI Components", () => {
       },
       todoList: {
         list: {
+          invalidate: mockInvalidate,
+        },
+      },
+      activity: {
+        listByList: {
+          invalidate: mockInvalidate,
+        },
+      },
+      recurrence: {
+        getByList: {
           invalidate: mockInvalidate,
         },
       },
@@ -141,6 +167,8 @@ describe("UI Components", () => {
       status: "TODO" as const,
       priority: "MEDIUM" as const,
       dueDate: null,
+      recurrenceRuleId: null,
+      occurrenceNumber: null,
       createdAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       updatedAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       tags: [],

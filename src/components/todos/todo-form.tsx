@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PlusCircle, Loader2, Calendar, Flag } from "lucide-react";
+import { PlusCircle, Loader2, Calendar, Flag, Repeat } from "lucide-react";
 import {
   type TodoStatusType,
   type TodoPriorityType,
@@ -15,6 +15,10 @@ import {
 } from "@/lib/validations/todo";
 import { type Tag } from "@/db/schema/tags";
 import { TagSelector } from "@/components/tags/tag-selector";
+import {
+  RecurrenceConfigDialog,
+  type RecurrenceConfig,
+} from "@/components/recurrence/recurrence-config-dialog";
 
 interface TodoFormProps {
   listId: string;
@@ -30,28 +34,53 @@ export function TodoForm({ listId, listName, availableTags, onManageTags }: Todo
   const [priority, setPriority] = useState<TodoPriorityType>("MEDIUM");
   const [dueDate, setDueDate] = useState<string>("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [recurrenceConfig, setRecurrenceConfig] = useState<RecurrenceConfig | null>(null);
+  const [isRecurrenceDialogOpen, setIsRecurrenceDialogOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
   const createMutation = trpc.todo.create.useMutation({
     onSuccess: async () => {
-      setTitle("");
-      setDescription("");
-      setStatus("TODO");
-      setPriority("MEDIUM");
-      setDueDate("");
-      setSelectedTagIds([]);
-      setValidationError(null);
+      resetForm();
       await Promise.all([
         utils.todo.list.invalidate({ listId }),
         utils.todoList.list.invalidate(),
+        utils.activity.listByList.invalidate({ listId }),
       ]);
     },
     onError: (err) => {
       setValidationError(err.message || "Failed to create todo.");
     },
   });
+
+  const createRecurringMutation = trpc.recurrence.create.useMutation({
+    onSuccess: async () => {
+      resetForm();
+      await Promise.all([
+        utils.todo.list.invalidate({ listId }),
+        utils.todoList.list.invalidate(),
+        utils.recurrence.getByList.invalidate({ listId }),
+        utils.activity.listByList.invalidate({ listId }),
+      ]);
+    },
+    onError: (err) => {
+      setValidationError(err.message || "Failed to configure recurring task.");
+    },
+  });
+
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    setStatus("TODO");
+    setPriority("MEDIUM");
+    setDueDate("");
+    setSelectedTagIds([]);
+    setRecurrenceConfig(null);
+    setValidationError(null);
+  };
+
+  const isPending = createMutation.isPending || createRecurringMutation.isPending;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,15 +92,32 @@ export function TodoForm({ listId, listName, availableTags, onManageTags }: Todo
     }
 
     setValidationError(null);
-    createMutation.mutate({
-      listId,
-      title: trimmedTitle,
-      description: description.trim() ? description.trim() : undefined,
-      status,
-      priority,
-      dueDate: dueDate ? dueDate : null,
-      tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
-    });
+
+    if (recurrenceConfig) {
+      createRecurringMutation.mutate({
+        listId,
+        frequency: recurrenceConfig.frequency,
+        interval: recurrenceConfig.interval,
+        daysOfWeek: recurrenceConfig.daysOfWeek,
+        startDate: recurrenceConfig.startDate || dueDate || new Date().toISOString().slice(0, 10),
+        endDate: recurrenceConfig.endDate || null,
+        maxOccurrences: recurrenceConfig.maxOccurrences || null,
+        baseTitle: trimmedTitle,
+        baseDescription: description.trim() ? description.trim() : undefined,
+        basePriority: priority,
+        baseTagIds: selectedTagIds,
+      });
+    } else {
+      createMutation.mutate({
+        listId,
+        title: trimmedTitle,
+        description: description.trim() ? description.trim() : undefined,
+        status,
+        priority,
+        dueDate: dueDate ? dueDate : null,
+        tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+      });
+    }
   };
 
   return (
@@ -197,6 +243,40 @@ export function TodoForm({ listId, listName, availableTags, onManageTags }: Todo
             />
           </div>
 
+          {/* Repeat / Recurrence Configuration */}
+          <div className="flex items-center justify-between rounded-lg border border-neutral-100 bg-neutral-50/50 p-2.5 dark:border-neutral-800/60 dark:bg-neutral-900/40">
+            <div className="flex items-center gap-2">
+              <div className="rounded-md bg-purple-50 p-1 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400">
+                <Repeat className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                  Recurring Schedule
+                </span>
+                <p className="text-[11px] text-neutral-500">
+                  {recurrenceConfig
+                    ? `Repeats ${recurrenceConfig.frequency.toLowerCase()} (every ${recurrenceConfig.interval})`
+                    : "Task will not repeat automatically"}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant={recurrenceConfig ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsRecurrenceDialogOpen(true)}
+              className={`h-7 text-xs px-2.5 gap-1 ${
+                recurrenceConfig
+                  ? "bg-purple-600 hover:bg-purple-700 text-white"
+                  : ""
+              }`}
+            >
+              <Repeat className="h-3 w-3" />
+              <span>{recurrenceConfig ? "Edit Schedule" : "Set Repeat"}</span>
+            </Button>
+          </div>
+
           {validationError && (
             <div className="rounded-md bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900/50">
               {validationError}
@@ -206,11 +286,11 @@ export function TodoForm({ listId, listName, availableTags, onManageTags }: Todo
           <div className="flex justify-end pt-1">
             <Button
               type="submit"
-              disabled={createMutation.isPending || !title.trim()}
+              disabled={isPending || !title.trim()}
               size="sm"
               className="gap-1.5 text-xs h-8"
             >
-              {createMutation.isPending ? (
+              {isPending ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   <span>Adding...</span>
@@ -218,12 +298,20 @@ export function TodoForm({ listId, listName, availableTags, onManageTags }: Todo
               ) : (
                 <>
                   <PlusCircle className="h-3.5 w-3.5" />
-                  <span>Add Task</span>
+                  <span>{recurrenceConfig ? "Create Recurring Task" : "Add Task"}</span>
                 </>
               )}
             </Button>
           </div>
         </form>
+
+        <RecurrenceConfigDialog
+          isOpen={isRecurrenceDialogOpen}
+          onOpenChange={setIsRecurrenceDialogOpen}
+          initialStartDate={dueDate}
+          initialConfig={recurrenceConfig}
+          onSave={setRecurrenceConfig}
+        />
       </CardContent>
     </Card>
   );

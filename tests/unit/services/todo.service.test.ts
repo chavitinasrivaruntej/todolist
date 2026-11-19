@@ -23,6 +23,8 @@ describe("TodoService", () => {
     status: "TODO",
     priority: "MEDIUM",
     dueDate: null,
+    recurrenceRuleId: null,
+    occurrenceNumber: null,
     createdAt: mockDate,
     updatedAt: mockDate,
     tags: [],
@@ -37,6 +39,9 @@ describe("TodoService", () => {
       updateStatus: vi.fn(),
       updateDetails: vi.fn(),
       delete: vi.fn(),
+      findByRecurrenceRuleAndOccurrence: vi.fn().mockResolvedValue(null),
+      findActiveOccurrenceByRuleId: vi.fn().mockResolvedValue(null),
+      detachRecurrence: vi.fn().mockResolvedValue(sampleTodo),
     };
 
     mockPermissionService = {

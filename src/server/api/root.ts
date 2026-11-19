@@ -6,10 +6,11 @@ import { invitationRouter } from "@/server/api/routers/invitation.router";
 import { notificationRouter } from "@/server/api/routers/notification.router";
 import { activityRouter } from "@/server/api/routers/activity.router";
 import { tagRouter } from "@/server/api/routers/tag.router";
+import { recurrenceRouter } from "@/server/api/routers/recurrence.router";
 
 /**
  * Primary AppRouter for the application.
- * Aggregates domain routers: todoList, todo, sharing, invitation, notification, activity, and tag.
+ * Aggregates domain routers: todoList, todo, sharing, invitation, notification, activity, tag, and recurrence.
  */
 export const appRouter = createTRPCRouter({
   todoList: listRouter,
@@ -19,6 +20,7 @@ export const appRouter = createTRPCRouter({
   notification: notificationRouter,
   activity: activityRouter,
   tag: tagRouter,
+  recurrence: recurrenceRouter,
 });
 
 export type AppRouter = typeof appRouter;

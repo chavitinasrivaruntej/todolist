@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { type TodoStatusType } from "@/lib/validations/todo";
 import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
+import { RecurrenceBadge } from "@/components/recurrence/recurrence-badge";
 import { TagBadge } from "@/components/tags/tag-badge";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -174,6 +175,9 @@ export function KanbanCard({
       <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pl-5 select-none">
         <PriorityBadge priority={todo.priority} />
         <DueDateBadge dueDate={todo.dueDate} status={todo.status} />
+        {todo.recurrenceRuleId && (
+          <RecurrenceBadge occurrenceNumber={todo.occurrenceNumber} />
+        )}
       </div>
 
       {/* Tags Badges */}

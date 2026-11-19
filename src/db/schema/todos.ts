@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, pgEnum, index, date } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, pgEnum, index, date, integer, unique } from "drizzle-orm/pg-core";
 import { todoLists } from "./lists";
 
 /**
@@ -20,7 +20,8 @@ export const todoPriorityEnum = pgEnum("todo_priority", [
  * Todo Table Definition
  * 
  * Represents an individual todo item belonging to exactly one TodoList,
- * with status, priority, optional due date, title, optional description, and audit timestamps.
+ * with status, priority, optional due date, title, optional description,
+ * optional recurrence series linkage, and audit timestamps.
  */
 export const todos = pgTable(
   "todos",
@@ -29,6 +30,8 @@ export const todos = pgTable(
     listId: uuid("list_id")
       .notNull()
       .references(() => todoLists.id, { onDelete: "cascade" }),
+    recurrenceRuleId: uuid("recurrence_rule_id"),
+    occurrenceNumber: integer("occurrence_number"),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
     status: todoStatusEnum("status").default("TODO").notNull(),
@@ -45,6 +48,11 @@ export const todos = pgTable(
     index("todos_list_id_created_at_idx").on(table.listId, table.createdAt),
     index("todos_list_id_due_date_idx").on(table.listId, table.dueDate),
     index("todos_list_id_priority_idx").on(table.listId, table.priority),
+    index("todos_recurrence_rule_id_idx").on(table.recurrenceRuleId),
+    unique("todos_recurrence_rule_occurrence_unique").on(
+      table.recurrenceRuleId,
+      table.occurrenceNumber
+    ),
   ]
 );
 

@@ -17,9 +17,15 @@ export type ActivityAction =
   | "MEMBER_ROLE_CHANGED"
   | "TAG_CREATED"
   | "TAG_UPDATED"
-  | "TAG_DELETED";
+  | "TAG_DELETED"
+  | "RECURRENCE_CREATED"
+  | "RECURRENCE_UPDATED"
+  | "RECURRENCE_PAUSED"
+  | "RECURRENCE_RESUMED"
+  | "RECURRENCE_ENDED"
+  | "RECURRING_OCCURRENCE_GENERATED";
 
-export type ActivityEntityType = "TODO" | "LIST" | "INVITATION" | "MEMBER" | "TAG";
+export type ActivityEntityType = "TODO" | "LIST" | "INVITATION" | "MEMBER" | "TAG" | "RECURRENCE";
 
 /**
  * ActivityLogs Table Definition

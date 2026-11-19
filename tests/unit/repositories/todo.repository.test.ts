@@ -76,6 +76,8 @@ describe("TodoRepository", () => {
         status: "TODO",
         priority: "MEDIUM",
         dueDate: null,
+        recurrenceRuleId: null,
+        occurrenceNumber: null,
       });
       expect(result).toEqual(createdRecord);
     });

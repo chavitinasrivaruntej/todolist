@@ -17,6 +17,11 @@ import {
   ShieldAlert,
   Clock,
   Tag as TagIcon,
+  Repeat,
+  Pause,
+  Play,
+  CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import type { ActivityAction } from "@/db/schema/activities";
 
@@ -289,6 +294,67 @@ function getActivityConfig(activity: ActivityItemData) {
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> deleted tag{" "}
             <span className="font-semibold line-through text-neutral-400">&quot;{m.name || "Tag"}&quot;</span>
+          </span>
+        ),
+      };
+    case "RECURRENCE_CREATED":
+      return {
+        icon: <Repeat className="h-3.5 w-3.5 text-purple-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> configured recurring task{" "}
+            <span className="font-semibold">&quot;{m.title || "Recurring Task"}&quot;</span> ({String(m.frequency || "").toLowerCase()})
+          </span>
+        ),
+      };
+    case "RECURRENCE_UPDATED":
+      return {
+        icon: <Repeat className="h-3.5 w-3.5 text-amber-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> updated recurring schedule for{" "}
+            <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
+          </span>
+        ),
+      };
+    case "RECURRENCE_PAUSED":
+      return {
+        icon: <Pause className="h-3.5 w-3.5 text-amber-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> paused recurrence for{" "}
+            <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
+          </span>
+        ),
+      };
+    case "RECURRENCE_RESUMED":
+      return {
+        icon: <Play className="h-3.5 w-3.5 text-emerald-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> resumed recurrence for{" "}
+            <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
+          </span>
+        ),
+      };
+    case "RECURRENCE_ENDED":
+      return {
+        icon: <CheckCircle2 className="h-3.5 w-3.5 text-neutral-500" />,
+        text: (
+          <span>
+            recurring task series ended for{" "}
+            <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
+          </span>
+        ),
+      };
+    case "RECURRING_OCCURRENCE_GENERATED":
+      return {
+        icon: <RotateCcw className="h-3.5 w-3.5 text-indigo-500" />,
+        text: (
+          <span>
+            generated occurrence #{m.occurrenceNumber ?? ""} for{" "}
+            <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
+            {m.dueDate ? ` (due ${m.dueDate})` : ""}
           </span>
         ),
       };

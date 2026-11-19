@@ -8,6 +8,10 @@ import {
   tagRepository as defaultTagRepo,
 } from "@/server/repositories/tag.repository";
 import {
+  RecurrenceService,
+  recurrenceService as defaultRecurrenceService,
+} from "@/server/services/recurrence.service";
+import {
   ListPermissionService,
   listPermissionService as defaultPermissionService,
 } from "@/server/services/list-permission.service";
@@ -34,6 +38,8 @@ export interface CreateTodoServiceInput {
   priority?: TodoPriority;
   dueDate?: string | null;
   tagIds?: string[];
+  recurrenceRuleId?: string | null;
+  occurrenceNumber?: number | null;
 }
 
 export interface UpdateTodoDetailsServiceInput {
@@ -54,6 +60,7 @@ export class TodoService {
   private readonly tagRepository: ITagRepository;
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
+  private readonly recurrenceService: RecurrenceService;
   private readonly db: Database;
 
   constructor(
@@ -61,13 +68,15 @@ export class TodoService {
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
     database: Database = defaultDb,
-    tagRepository: ITagRepository = defaultTagRepo
+    tagRepository: ITagRepository = defaultTagRepo,
+    recurrenceService: RecurrenceService = defaultRecurrenceService
   ) {
     this.repository = repository;
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.db = database;
     this.tagRepository = tagRepository;
+    this.recurrenceService = recurrenceService;
   }
 
   /**
@@ -124,7 +133,7 @@ export class TodoService {
     }
 
     return withTransaction(this.db, async (tx) => {
-      const todoData = {
+      const todoData: Parameters<typeof this.repository.create>[0] = {
         listId: input.listId,
         title: trimmedTitle,
         description: input.description ?? null,
@@ -132,6 +141,12 @@ export class TodoService {
         priority: input.priority ?? "MEDIUM",
         dueDate: input.dueDate ?? null,
       };
+      if (input.recurrenceRuleId !== undefined) {
+        todoData.recurrenceRuleId = input.recurrenceRuleId;
+      }
+      if (input.occurrenceNumber !== undefined) {
+        todoData.occurrenceNumber = input.occurrenceNumber;
+      }
 
       const created = tx
         ? await this.repository.create(todoData, tx)
@@ -215,6 +230,11 @@ export class TodoService {
         },
         tx
       );
+
+      // Trigger automatic occurrence generation when a recurring task is completed
+      if (input.status === "DONE" && existing.recurrenceRuleId) {
+        await this.recurrenceService.handleTaskCompletion(updated, userId, tx);
+      }
 
       return { ...updated, tags: existing.tags };
     });

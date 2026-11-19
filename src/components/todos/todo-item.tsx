@@ -24,6 +24,7 @@ import {
   TODO_PRIORITIES,
 } from "@/lib/validations/todo";
 import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
+import { RecurrenceBadge } from "@/components/recurrence/recurrence-badge";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { TagSelector } from "@/components/tags/tag-selector";
 
@@ -285,6 +286,11 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
 
               {/* Due Date Badge */}
               <DueDateBadge dueDate={todo.dueDate} status={todo.status} />
+
+              {/* Recurrence Badge */}
+              {todo.recurrenceRuleId && (
+                <RecurrenceBadge occurrenceNumber={todo.occurrenceNumber} />
+              )}
 
               {/* Status Indicator / Dropdown */}
               {isReadOnly ? (
