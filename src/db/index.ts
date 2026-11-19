@@ -4,7 +4,6 @@ import * as schema from "./schema";
 import { DatabaseConfigurationError } from "@/server/errors";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dbInstance: PostgresJsDatabase<typeof schema> | undefined;
 }
 

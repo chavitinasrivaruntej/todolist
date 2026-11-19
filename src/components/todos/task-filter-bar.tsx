@@ -9,7 +9,6 @@ import {
   type SortFieldType,
   type SortDirectionType,
   TODO_PRIORITIES,
-  DUE_DATE_FILTERS,
 } from "@/lib/validations/todo";
 import { Search, X, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 

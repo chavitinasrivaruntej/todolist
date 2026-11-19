@@ -62,8 +62,8 @@ export class ActivityService {
         },
         tx
       );
-    } catch (err: any) {
-      if (err?.name === "DatabaseConfigurationError") {
+    } catch (err: unknown) {
+      if ((err as { name?: string })?.name === "DatabaseConfigurationError") {
         return null;
       }
       throw err;

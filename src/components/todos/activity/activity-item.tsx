@@ -27,7 +27,7 @@ export interface ActivityItemData {
   action: ActivityAction;
   entityType: string;
   entityId: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   createdAt: string | Date;
 }
 
@@ -58,7 +58,7 @@ function formatTimestamp(dateInput: string | Date): string {
 
 function getActivityConfig(activity: ActivityItemData) {
   const actor = activity.actorEmail ? activity.actorEmail.split("@")[0] : "Collaborator";
-  const m = activity.metadata || {};
+  const m = (activity.metadata || {}) as Record<string, string | number | boolean | null | undefined>;
 
   switch (activity.action) {
     case "TODO_CREATED":
@@ -67,7 +67,7 @@ function getActivityConfig(activity: ActivityItemData) {
         text: (
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> created task{" "}
-            <span className="font-medium text-neutral-800 dark:text-neutral-200">"{m.title || "Untitled"}"</span>
+            <span className="font-medium text-neutral-800 dark:text-neutral-200">&quot;{m.title || "Untitled"}&quot;</span>
           </span>
         ),
       };
@@ -76,8 +76,8 @@ function getActivityConfig(activity: ActivityItemData) {
       if (m.previousTitle && m.newTitle && m.previousTitle !== m.newTitle) {
         parts.push(
           <span key="title">
-            renamed task from <span className="line-through text-neutral-400">"{m.previousTitle}"</span> to{" "}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">"{m.newTitle}"</span>
+            renamed task from <span className="line-through text-neutral-400">&quot;{m.previousTitle}&quot;</span> to{" "}
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200">&quot;{m.newTitle}&quot;</span>
           </span>
         );
       }
@@ -124,7 +124,7 @@ function getActivityConfig(activity: ActivityItemData) {
             <span>
               <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> updated task{" "}
               <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                "{m.title || m.newTitle || "Task"}"
+                &quot;{m.title || m.newTitle || "Task"}&quot;
               </span>
             </span>
           ),
@@ -143,7 +143,7 @@ function getActivityConfig(activity: ActivityItemData) {
               </React.Fragment>
             ))}
             {m.title && !parts.some((p) => (p as React.ReactElement).key === "title") && (
-              <span className="text-neutral-500"> on "{m.title}"</span>
+              <span className="text-neutral-500"> on &quot;{m.title}&quot;</span>
             )}
           </span>
         ),
@@ -155,7 +155,7 @@ function getActivityConfig(activity: ActivityItemData) {
         text: (
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> moved{" "}
-            <span className="font-medium text-neutral-800 dark:text-neutral-200">"{m.title || "Task"}"</span>{" "}
+            <span className="font-medium text-neutral-800 dark:text-neutral-200">&quot;{m.title || "Task"}&quot;</span>{" "}
             from <span className="underline decoration-dotted">{m.previousStatus}</span> to{" "}
             <span className="font-semibold text-emerald-600 dark:text-emerald-400">{m.newStatus}</span>
           </span>
@@ -167,7 +167,7 @@ function getActivityConfig(activity: ActivityItemData) {
         text: (
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> deleted task{" "}
-            <span className="font-medium line-through text-neutral-500">"{m.title || "Task"}"</span>
+            <span className="font-medium line-through text-neutral-500">&quot;{m.title || "Task"}&quot;</span>
           </span>
         ),
       };
@@ -177,7 +177,7 @@ function getActivityConfig(activity: ActivityItemData) {
         text: (
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> created this list{" "}
-            <span className="font-semibold">"{m.name || "List"}"</span>
+            <span className="font-semibold">&quot;{m.name || "List"}&quot;</span>
           </span>
         ),
       };
@@ -187,8 +187,8 @@ function getActivityConfig(activity: ActivityItemData) {
         text: (
           <span>
             <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> renamed list from{" "}
-            <span className="line-through text-neutral-400">"{m.previousName}"</span> to{" "}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">"{m.newName}"</span>
+            <span className="line-through text-neutral-400">&quot;{m.previousName}&quot;</span> to{" "}
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200">&quot;{m.newName}&quot;</span>
           </span>
         ),
       };

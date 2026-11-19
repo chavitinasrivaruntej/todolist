@@ -277,7 +277,7 @@ export function NotificationBell({ onSelectList }: NotificationBellProps) {
                   <CheckCheck className="h-5 w-5" />
                 </div>
                 <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                  You're all caught up!
+                  You&apos;re all caught up!
                 </p>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
                   No notifications to show.

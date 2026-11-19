@@ -13,8 +13,8 @@ export async function withTransaction<T>(
       if (typeof db.transaction === "function") {
         return await db.transaction(async (tx) => fn(tx));
       }
-    } catch (err: any) {
-      if (err?.name === "DatabaseConfigurationError") {
+    } catch (err: unknown) {
+      if ((err as { name?: string })?.name === "DatabaseConfigurationError") {
         return fn(undefined);
       }
       throw err;

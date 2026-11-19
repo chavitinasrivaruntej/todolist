@@ -69,7 +69,7 @@ export function KanbanBoard({
         utils.todoList.list.invalidate(),
       ]);
     },
-    onError: (err) => {
+    onError: () => {
       // Failure leaves card in original column and triggers refetch to restore state
       utils.todo.list.invalidate({ listId });
     },

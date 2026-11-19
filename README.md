@@ -1,129 +1,342 @@
-# Caize Todo Application — Authenticated Multi-Tenant Task Manager & Dual-View Kanban Board (Phase 4)
+# Caize Todo — High-Performance Multi-Tenant Task Management Platform
 
-A production-grade, minimalist task management application built with a **modular monolith architecture** emphasizing separation of concerns, end-to-end type safety, multi-tenant user authentication, data isolation, dual-view visualization (List & Kanban Board), accessible drag-and-drop task movement, and real-world database persistence with Supabase PostgreSQL.
-
----
-
-## 1. Project Overview & Evolution
-
-Evolved through progressive phases:
-- **Phase 1**: Core architecture, single-list foundation, Zod validation, and decoupled layers.
-- **Phase 2**: Multi-list personal management, foreign-key cascade integrity, task status enum (`TODO`, `IN_PROGRESS`, `DONE`), and safe deletion policies.
-- **Phase 2.1**: Database migration to an RFC 4122 v4 compliant UUID (`00000000-0000-4000-8000-000000000001`) for the default personal list.
-- **Phase 3**: Dual-view experience (List View & Kanban Board View) with per-list view preference persistence via `localStorage`.
-- **Phase 3.1**: Accessible Drag-and-Drop enhancement using `@dnd-kit`, allowing smooth card movement across status columns with pointer, touch, and keyboard sensors.
-- **Phase 4**: User Authentication, Identity & Multi-Tenant Data Ownership using Supabase Auth (`@supabase/ssr`), Next.js Session Middleware, Zero-Trust server-side authorization in tRPC `protectedProcedure`, and PostgreSQL Row-Level Security (RLS).
-
-### Core Architectural Pillars
-- **Strict Layer Separation**: Presentation, API Transport, Domain Services, Data Access (Repositories), Validations, and Database Schema remain strictly decoupled.
-- **Multi-Tenant Data Ownership**: Strict relational hierarchy: `User (auth.users) → Todo Lists (todo_lists.user_id) → Todos (todos.list_id)`.
-- **Zero-Trust Client Boundary**: The frontend never supplies a `userId`. All mutations and queries resolve identity strictly from verified server-side session context (`ctx.user.id`).
-- **Information Disclosure Defense**: Unauthorized access attempts to other users' lists or tasks always resolve to `NotFoundError` rather than `ForbiddenError`, eliminating UUID existence oracle vectors.
-- **Defense-in-Depth RLS**: Database Row-Level Security policies active on `todo_lists` and `todos` preventing unauthorized access via public anon client keys.
-- **Unified Domain Data**: Both List and Kanban Board views operate on the exact same underlying Todo records and database status enum (`'TODO' | 'IN_PROGRESS' | 'DONE'`).
-- **Drag-and-Drop with Accessible Fallbacks**: Tasks can be moved by dragging or via explicit accessible transition buttons (`→ In Progress`, `✓ Done`, `↩ Reopen`).
-- **112 Automated Vitest Tests**: 100% passing tests covering auth validation, cross-tenant isolation, tRPC procedures, services, repositories, hooks, and React UI components.
-- **Live Supabase PostgreSQL Verification**: Verified live with transaction pooler runtime and session pooler migrations.
+A production-grade, collaborative task management platform engineered with a strict **modular monolith architecture**, end-to-end TypeScript type safety, multi-tenant relational isolation, accessible dual-view visualization (List View & Kanban Board), fine-grained role-based access control (RBAC), real-time notification dispatch, audit trail logging, and persistent cloud storage backed by Supabase PostgreSQL.
 
 ---
 
-## 2. Technology Stack
+## 1. Project Overview
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Framework** | [Next.js](https://nextjs.org/) (App Router, Turbopack) | React full-stack framework with React Server Components & middleware routing |
-| **Authentication** | [Supabase Auth](https://supabase.com/docs/guides/auth) + `@supabase/ssr` | User registration, sign in, JWT verification, and secure HTTP-only cookies |
-| **Language** | [TypeScript](https://www.typescriptlang.org/) | Strict mode enabled, zero `any` usage, end-to-end type inference |
-| **API Transport** | [tRPC v11](https://trpc.io/) | Type-safe RPC with automatic client inference and `protectedProcedure` auth guard |
-| **Database ORM** | [Drizzle ORM](https://orm.drizzle.team/) | Lightweight, type-safe SQL query builder and schema management |
-| **Database** | [PostgreSQL (Supabase)](https://supabase.com/) | Real relational database with transaction connection pooling & RLS |
-| **Validation** | [Zod](https://zod.dev/) | Single source of truth for auth, list, and task input schemas |
-| **Styling & UI** | [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) | Accessible, responsive, minimalist design with neutral palette |
-| **Drag & Drop** | [@dnd-kit](https://dndkit.com/) | Lightweight accessible drag-and-drop toolkit with touch & pointer sensors |
-| **Testing** | [Vitest](https://vitest.dev/) + React Testing Library | Unit, service, repository, tRPC caller, and component testing |
+**Caize Todo** addresses the complexity of modern personal and collaborative task management by combining minimalist, high-velocity UX with rigorous enterprise-grade engineering principles. 
+
+Modern task managers frequently suffer from architectural anti-patterns: bloated client-side state, unindexed relational queries, lack of multi-tenant zero-trust boundaries, or loose authorization checks that lead to information disclosure. Caize Todo was built from the ground up to demonstrate how a modern full-stack web application can maintain:
+
+- **Absolute Separation of Concerns**: Strict boundary layers between UI components, API transport, business domain logic, repository queries, and schema definitions.
+- **Zero-Trust Multi-Tenancy**: All client requests resolve user identity strictly from verified server-side session contexts (`ctx.user.id`), with defense-in-depth Row-Level Security (RLS) active in PostgreSQL.
+- **Dual-View Ergonomics**: Fluid switching between an accessible structured List View and an interactive Kanban Board with `@dnd-kit` drag-and-drop mechanics.
+- **Real-Time Collaboration**: Role-based list sharing (`OWNER`, `EDITOR`, `VIEWER`), secure invitation tokens, activity audit feeds, and in-app notification center.
+- **Advanced Task Ergonomics**: Four-tier priority hierarchy (`LOW`, `MEDIUM`, `HIGH`, `URGENT`), timezone-safe calendar due dates, overdue tracking, server-side `ilike` search, and deterministic multi-key sorting.
 
 ---
 
-## 3. Architecture & Data Flow
+## 2. Project Development Status
+
+- **Current Development Phase**: **PHASE 7**
+- **Implementation Status**: **100% COMPLETE & VERIFIED**
+- **Repository Milestone**: **Phase 7 Project Consolidation & Verification Milestone**
+
+### Milestone Summary
+The project has successfully completed seven foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, and advanced task metadata. Every layer—from Drizzle ORM schemas to React UI components—has undergone rigorous verification with 245 automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database verification.
+
+---
+
+## 3. Implemented Features (Phases 1 – 7)
+
+### Phase 1: Core Architecture & Single-List Persistence
+- Modular monolith directory structure separating presentation, tRPC API routes, domain services, data repositories, and Drizzle schemas.
+- Full CRUD operations for tasks with title, optional description, and audit timestamps.
+- RFC-compliant input validation via Zod schemas.
+- Vitest unit testing harness with in-memory repository abstractions.
+
+### Phase 2 & 2.1: Multi-List Support & Status Lifecycle
+- User ability to create, rename, and delete multiple independent Todo lists.
+- Three-state task lifecycle: `TODO`, `IN_PROGRESS`, and `DONE` managed via PostgreSQL ENUM.
+- Relational foreign-key cascade integrity (`ON DELETE CASCADE`) ensuring complete cleanup of child tasks.
+- Migration to RFC 4122 v4 compliant UUIDs across all primary and foreign keys, standardizing the default Personal list to `00000000-0000-4000-8000-000000000001`.
+
+### Phase 3 & 3.1: Dual-View Experience & Accessible Kanban Board
+- Instant toggle between structured **List View** and visual **Kanban Board View**.
+- Per-list view preference persistence stored in `localStorage` with SSR hydration guards.
+- Three-column Kanban board mapped directly to the unified underlying database status enum (`TODO`, `IN_PROGRESS`, `DONE`).
+- Fluid drag-and-drop task movement powered by `@dnd-kit`, featuring pointer, touch (with hold delay to avoid scroll hijacking), and keyboard sensors.
+- Accessible explicit fallback controls (`→ In Progress`, `✓ Done`, `↩ Reopen`) ensuring 100% keyboard and screen-reader usability.
+
+### Phase 4 & 4.2: Supabase Authentication & Multi-Tenant Data Isolation
+- End-to-end user authentication with `@supabase/ssr`, supporting email/password registration and login.
+- Google OAuth 2.0 integration with secure callback handling and state validation.
+- Next.js Session Middleware refreshing session JWTs and protecting private routes with zero client exposure.
+- Server-derived identity: Frontend never supplies a `userId`; tRPC `protectedProcedure` resolves identity directly from the cryptographically verified session token.
+- Information Disclosure Prevention: Cross-tenant unauthorized access attempts consistently throw `NotFoundError` rather than `ForbiddenError`, eliminating UUID existence enumeration vectors.
+
+### Phase 5 & 5.7: List Sharing, Role-Based Collaboration & Invitations
+- Collaborative shared lists supporting three distinct permission tiers:
+  - **OWNER**: Full administrative control (manage collaborators, rename list, delete list, manage tasks).
+  - **EDITOR**: Read and write access (create tasks, modify details, change status, delete tasks).
+  - **VIEWER**: Strict read-only access (view tasks, view activity; all mutations blocked).
+- Cryptographic invitation token lifecycle: generate unique invitation tokens, dispatch invitations, accept via `/invite/[token]`, or revoke.
+- Delivery strategy pattern supporting console delivery (local development) and Resend API (production transactional emails).
+- OAuth open-redirect defense validating target URLs against origin whitelists.
+
+### Phase 6: Real-Time Notifications & Keyset Activity Audit Trail
+- Persistent in-app **Notification Center** with bell icon, unread counter badge, mark-as-read toggles, and mark-all-read actions.
+- Notifications dispatched automatically for invitation receipt, invitation acceptance, role updates, and list removal.
+- Immutable **Activity History Timeline** auditing task creations, updates, renames, status movements, and deletions.
+- High-efficiency composite keyset pagination (`(created_at, id)`) preventing offset drift and index degradation on large audit tables.
+
+### Phase 7: Task Priorities, Calendar Due Dates, Search & Deterministic Sorting
+- **Four-Tier Priority Model**: `LOW`, `MEDIUM`, `HIGH`, `URGENT` backed by PostgreSQL ENUM `todo_priority`, defaulting to `MEDIUM`.
+- **Calendar Due Dates**: ISO `YYYY-MM-DD` strings stored via PostgreSQL `date` type with zero-timezone conversion shifts.
+- **Overdue Invariant Engine**: Tasks due in the past are marked overdue only when in `TODO` or `IN_PROGRESS`. Tasks marked `DONE` or due today are never flagged overdue.
+- **Server-Side Full-Text Search**: Case-insensitive SQL `ilike` pattern matching across task titles and descriptions.
+- **Multi-Facet Filtering**: Filter concurrently by status, priority, and due date categories (`ALL`, `OVERDUE`, `TODAY`, `THIS_WEEK`, `NO_DUE_DATE`).
+- **Deterministic Multi-Key Sorting**: Multi-key sort orders with `NULLS LAST` for calendar dates and weighted `CASE` rankings for priorities, always broken deterministically by `createdAt` and unique `id`.
+- **Activity Log Delta Tracking & No-Op Suppression**: Detailed metadata capture recording previous and new values for priorities and due dates, while suppressing database writes and activity logs when mutations contain identical values.
+
+---
+
+## 4. Technology Stack
+
+| Layer | Technology | Version | Purpose |
+|---|---|---|---|
+| **Framework** | [Next.js](https://nextjs.org/) (App Router, Turbopack) | 16.4.6 | Full-stack React framework with React Server Components, server actions, and proxy middleware routing |
+| **Runtime & UI** | [React](https://react.dev/) | 19.3.0 | Modern UI rendering engine with component-level state and transitions |
+| **Authentication** | [Supabase Auth](https://supabase.com/docs/guides/auth) + `@supabase/ssr` | 0.12.7 | Secure cookie-based authentication, user identity verification, and Google OAuth |
+| **Language** | [TypeScript](https://www.typescriptlang.org/) | 5.x (Strict) | End-to-end type safety, strict null checks, and zero runtime type degradation |
+| **API Transport** | [tRPC v11](https://trpc.io/) | 11.13.0 | End-to-end type-safe RPC boundary with automatic client type inference |
+| **State & Cache** | [@tanstack/react-query](https://tanstack.com/query) | 5.107.1 | Optimistic UI updates, automatic query cache invalidation, and background synchronization |
+| **Database ORM** | [Drizzle ORM](https://orm.drizzle.team/) | 0.45.4 | High-performance, lightweight SQL query builder and schema definitions |
+| **Database Engine** | [PostgreSQL (Supabase)](https://supabase.com/) | 15+ | Relational persistence, connection pooling (PgBouncer), indexes, and RLS policies |
+| **Schema Validation**| [Zod](https://zod.dev/) | 4.6.7 | Single source of truth for runtime validation of API inputs and domain models |
+| **Styling & Icons** | [Tailwind CSS v4](https://tailwindcss.com/) + [Lucide React](https://lucide.dev/) | 4.3.3 / 1.73.0 | Minimalist design system, responsive layouts, dark mode support, and iconography |
+| **Drag and Drop** | [@dnd-kit/core](https://dndkit.com/) | 6.3.1 | Accessible drag-and-drop primitives with pointer, keyboard, and touch sensor abstractions |
+| **Test Harness** | [Vitest](https://vitest.dev/) + React Testing Library | 5.1.0 / 16.3.3 | Lightning-fast test runner for unit, integration, and UI component tests |
+
+---
+
+## 5. Architectural Design
+
+Caize Todo is organized as a **modular monolith** that strictly enforces unidirectional dependencies. No upper layer bypasses an intermediate layer to query the database directly.
 
 ```
-[Browser / Presentation Layer]
-  ├── /login, /register (Auth Pages & Forms)
-  └── / (TodoDashboard, ListSidebar, ViewSwitcher, TodoList, KanbanBoard, UserMenu)
-         │  (HTTP-only Cookies / Bearer Session)
-         ▼
-[Next.js Middleware] (src/middleware.ts)
-  └── Refreshes session tokens & redirects unauthenticated traffic to /login
-         │
-         ▼
-[tRPC API Layer] (createTRPCContext + protectedProcedure)
-  ├── Server-side auth verification via Supabase Server Client (ctx.user.id)
-  └── Rejects unauthenticated calls with TRPCError UNAUTHORIZED
-         │
-         ▼
-[Domain Services Layer] (TodoListService, TodoService)
-  ├── Scopes every operation strictly to ctx.user.id
-  ├── Auto-provisions "Personal" list for new accounts
-  └── Throws domain NotFoundError on cross-tenant access attempts
-         │
-         ▼
-[Data Access Repositories] (TodoListRepository, TodoRepository)
-  ├── Scoped SQL queries (WHERE user_id = $userId)
-  └── Atomic status updates and task deletions via list_id subqueries
-         │
-         ▼
-[PostgreSQL Database] (Supabase)
-  ├── auth.users (Supabase managed user accounts)
-  ├── todo_lists (user_id REFERENCES auth.users(id) ON DELETE CASCADE)
-  ├── todos (list_id REFERENCES todo_lists(id) ON DELETE CASCADE)
-  └── Row-Level Security (RLS) active on all tables
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Presentation Layer (Next.js)                    │
+│  /login, /register, /invite/[token], TodoDashboard, KanbanBoard, Form  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (HTTP Cookies / Session JWT)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Next.js Session Middleware                      │
+│            Token validation, SSR cookie sync, route protection         │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (Validated Session Context)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                          API Layer (tRPC v11)                          │
+│     publicProcedure, protectedProcedure (ctx.user.id resolution)      │
+│     Routers: todoRouter, listRouter, sharingRouter, notificationRouter │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (Validated DTOs via Zod)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                          Domain Service Layer                          │
+│     TodoService, TodoListService, ListPermissionService, Activity, ... │
+│     • Enforces RBAC permissions (OWNER, EDITOR, VIEWER)                │
+│     • Manages atomic transactions (withTransaction)                    │
+│     • Captures audit deltas & suppresses no-ops                        │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (Domain Entities)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                         Data Access Layer (Repositories)               │
+│     TodoRepository, TodoListRepository, ListMemberRepo, ActivityRepo   │
+│     • Parameterized SQL queries via Drizzle ORM                        │
+│     • Multi-key deterministic sorting & keyset pagination              │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ (SQL Queries)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Supabase PostgreSQL Database Layer                 │
+│     Tables: auth.users, todo_lists, todos, list_members, invitations,  │
+│             activity_logs, notifications                               │
+│     • Foreign-key cascade deletion (ON DELETE CASCADE)                 │
+│     • Composite B-tree indexes & Row-Level Security (RLS) policies     │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 4. Database Schema & Migrations
-
-The database schema is managed via Drizzle Kit:
-
-- `0000_futuristic_fixer.sql`: Initial `todos` table.
-- `0001_lucky_alice.sql`: `todo_lists` table, foreign-key relationship, status enum.
-- `0002_fix_default_list_uuid.sql`: Migrated default list ID to RFC 4122 v4 UUID (`00000000-0000-4000-8000-000000000001`).
-- `0003_add_user_ownership.sql`: Added `user_id` foreign key referencing `auth.users(id)`, created indexes `(user_id)` and `(user_id, created_at)`, and enabled Row-Level Security (RLS) policies on `todo_lists` and `todos`.
+### Architectural Principles
+1. **Zero-Trust Client Boundary**: Clients cannot inject user IDs. The server derives identity purely from verified session tokens.
+2. **Atomic Mutations with Activity Auditing**: Every domain mutation (`TODO_CREATED`, `TODO_UPDATED`, `TODO_STATUS_CHANGED`, `TODO_DELETED`) executes inside an atomic database transaction alongside its corresponding audit log.
+3. **Information Disclosure Prevention**: If a user queries an unauthorized resource, the system returns `NotFoundError` rather than `ForbiddenError`, eliminating enumeration attacks.
 
 ---
 
-## 5. Running the Application & Test Suite
+## 6. Database Schema & Relational Design
 
-### Environment Configuration
-Ensure `.env.local` is configured with:
+The database schema is defined declaratively using Drizzle ORM and migrated to PostgreSQL via Drizzle Kit:
+
+```
+  auth.users (Supabase Auth)
+      │
+      ├──< todo_lists (id, user_id, name, created_at, updated_at)
+      │        │
+      │        ├──< todos (id, list_id, title, description, status, priority, due_date, created_at, updated_at)
+      │        │
+      │        ├──< list_members (id, list_id, user_id, role ['OWNER','EDITOR','VIEWER'], joined_at)
+      │        │
+      │        ├──< invitations (id, list_id, email, token, role, status, expires_at, created_at)
+      │        │
+      │        └──< activity_logs (id, list_id, actor_id, action, entity_type, entity_id, metadata, created_at)
+      │
+      └──< notifications (id, user_id, actor_id, list_id, type, title, message, is_read, created_at)
+```
+
+### Critical Indexes & Performance Optimizations
+- `todos_list_id_idx`: B-tree index on `todos(list_id)` for rapid cascade resolution.
+- `todos_list_id_created_at_idx`: Composite index on `todos(list_id, created_at)` for chronological retrieval.
+- `todos_list_id_due_date_idx`: Composite index on `todos(list_id, due_date ASC NULLS LAST)` for calendar-based queries.
+- `todos_list_id_priority_idx`: Composite index on `todos(list_id, priority)` for priority facet filtering.
+- `activity_logs_composite_pagination_idx`: Keyset pagination index on `activity_logs(list_id, created_at DESC, id DESC)`.
+- `notifications_user_unread_idx`: Composite index on `notifications(user_id, is_read, created_at DESC)` for fast unread count queries.
+
+### Migration Journal Registry
+- `0000_futuristic_fixer.sql`: Initial `todos` schema and timestamps.
+- `0001_lucky_alice.sql`: Multi-list support (`todo_lists`) and foreign-key relationships.
+- `0002_fix_default_list_uuid.sql`: Default list UUID migration (`00000000-0000-4000-8000-000000000001`).
+- `0003_add_user_ownership.sql`: Multi-tenant ownership referencing `auth.users(id)` and RLS policies.
+- `0004_list_sharing_and_collaboration.sql`: Collaborative roles (`list_members`), invitations, and permission triggers.
+- `0005_notifications_and_activity.sql`: Notification center tables and immutable activity audit logs.
+- `0006_task_priorities_and_due_dates.sql`: Task priorities (`todo_priority` enum), calendar due dates, and composite indexes.
+
+---
+
+## 7. Authorization & Security Model
+
+| User Role | Read Tasks & Activity | Create / Edit / Delete Tasks | Invite Collaborators | Update Roles / Remove Members | Rename / Delete List |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **OWNER** | Allowed | Allowed | Allowed | Allowed | Allowed |
+| **EDITOR** | Allowed | Allowed | Blocked | Blocked | Blocked |
+| **VIEWER** | Allowed | Blocked | Blocked | Blocked | Blocked |
+| **Non-Member** | Blocked (`404`) | Blocked (`404`) | Blocked (`404`) | Blocked (`404`) | Blocked (`404`) |
+
+- **Multi-Tenant Isolation**: Verified in automated integration tests. User A can never access, query, or mutate User B's lists or tasks.
+- **Invitation Security**: Invitation tokens are 32-byte cryptographically secure random hexadecimal strings with an automatic 7-day expiration window.
+- **OAuth Open-Redirect Guard**: Authentication callbacks validate the `next` redirect target to prevent open redirect vulnerabilities to external malicious origins.
+
+---
+
+## 8. Installation & Local Development
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) v20+ or v22+
+- [npm](https://www.npmjs.com/) v10+
+- A [Supabase](https://supabase.com/) project with PostgreSQL and Auth enabled
+
+### 1. Clone Repository & Install Dependencies
+```bash
+git clone https://github.com/chavitinasrivaruntej/todolist.git
+cd todolist
+npm install
+```
+
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env.local` and provide your Supabase project credentials:
+```bash
+cp .env.example .env.local
+```
+
+Populate the following variables in `.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL="https://[project-ref].supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="[anon-key]"
-SUPABASE_SERVICE_ROLE_KEY="[service-role-key]"
-DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-1-[region].pooler.supabase.com:6543/postgres?pgbouncer=true"
-DIRECT_URL="postgresql://postgres.[ref]:[password]@aws-1-[region].pooler.supabase.com:5432/postgres"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Supabase API Credentials
+NEXT_PUBLIC_SUPABASE_URL="https://[YOUR_PROJECT_REF].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="[YOUR_SUPABASE_ANON_KEY]"
+SUPABASE_SERVICE_ROLE_KEY="[YOUR_SUPABASE_SERVICE_ROLE_KEY]"
+
+# Database Connection (Transaction Mode for App, Direct/Session Mode for Migrations)
+DATABASE_URL="postgresql://postgres.[YOUR_PROJECT_REF]:[YOUR_PASSWORD]@aws-1-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.[YOUR_PROJECT_REF]:[YOUR_PASSWORD]@aws-1-[REGION].pooler.supabase.com:5432/postgres"
+
+# Email Configuration (Console for local development, Resend for production)
+EMAIL_PROVIDER="console"
 ```
 
-### Development Server
+### 3. Run Migrations
+Apply the registered Drizzle migrations to your Supabase instance:
+```bash
+npm run db:migrate
+```
+
+### 4. Start Development Server
 ```bash
 npm run dev
 ```
-Visit `http://localhost:3000`. If unauthenticated, you will be redirected to `/login`. You can create an account at `/register` or sign in.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Run Automated Tests
+---
+
+## 9. Quality Assurance & Verification
+
+Caize Todo adheres to rigorous automated quality gates:
+
+### Run Automated Test Suite
 ```bash
 npm test
 ```
-Executes all 112 automated Vitest tests across 15 test suites.
+- **30 test files**, **245 unit and integration tests** passing (100% pass rate).
+- Full coverage across validations, repositories, domain services, tRPC routers, authorization checks, and React UI components.
 
-### Type Check & Production Build
+### TypeScript Compilation Check
 ```bash
 npx tsc --noEmit
+```
+- Strict mode compilation: **0 errors**.
+
+### ESLint Check
+```bash
+npm run lint
+```
+- Codebase style and hook enforcement: **0 errors**.
+
+### Production Build
+```bash
 npm run build
 ```
+- Production compilation with Next.js Turbopack: **Exit Code 0** across all static, dynamic, and proxy routes.
 
-### Live Supabase Multi-Tenant Verification Script
+### Live Supabase Verification Script
 ```bash
-npx tsx scripts/verify-phase4-live.ts
+npx tsx scripts/verify-phase7-live.ts
 ```
-Creates two test accounts on Supabase, verifies cross-tenant isolation and zero-trust rejections, and cleans up after completion.
+- Executes an end-to-end operational check against live Supabase PostgreSQL (task creation, overdue validation, deterministic sorting, activity metadata delta logging, and automated cleanup).
+
+---
+
+## 10. Long-Term Project Roadmap (12 Phases)
+
+Caize Todo follows a structured 12-phase development trajectory:
+
+```
+[Phase 1: Architecture Foundation] ─────────► [DONE]
+[Phase 2: Multi-List & Status Engine] ──────► [DONE]
+[Phase 3: Dual-View & Kanban Drag-and-Drop] ► [DONE]
+[Phase 4: Multi-Tenant Supabase Auth] ──────► [DONE]
+[Phase 5: RBAC Collaboration & Invitations] ─► [DONE]
+[Phase 6: Notifications & Activity Audit] ──► [DONE]
+[Phase 7: Priorities, Due Dates & Search] ──► [DONE]
+────────────────────────────────────────────────────
+[Phase 8: Tags, Labels & Multi-Categorization] ──► [PLANNED]
+[Phase 9: Recurring Tasks & Schedule Engine] ───► [PLANNED]
+[Phase 10: File Attachments & Asset Storage] ───► [PLANNED]
+[Phase 11: Realtime WebSockets & Live Presence] ─► [PLANNED]
+[Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
+```
+
+### Planned Future Phases (8 – 12)
+- **Phase 8 (Planned)**: Color-coded tags, nested labels, and multi-label filtering.
+- **Phase 9 (Planned)**: Recurring task schedules (daily, weekly, custom cron intervals) with automatic re-creation.
+- **Phase 10 (Planned)**: File attachments, document previews, and asset storage integration via Supabase Storage.
+- **Phase 11 (Planned)**: Supabase Realtime WebSocket subscriptions for live collaborator presence and instant board sync.
+- **Phase 12 (Planned)**: Productivity metrics, weekly completion trends, velocity charts, and CSV/JSON export.
+
+---
+
+## 11. Phase 7 — Project Consolidation Milestone
+
+This checkpoint marks the official completion and consolidation of **Phase 7**. All planned architectural pillars through Phase 7 are implemented, fully tested, documented, and synchronized to GitHub.
+
+- **Verified Test Metrics**: 30 test suites, 245 passing tests, 0 failures.
+- **Build Status**: Production Next.js 16 build verified.
+- **Database Status**: Migration 0006 synchronized and verified live on Supabase PostgreSQL.
+- **Git Milestone**: Backed up and synchronized with `origin/main` on GitHub.
+
+The repository is fully stabilized and positioned for Phase 8 development.

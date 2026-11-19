@@ -4,6 +4,7 @@ import {
   notifications,
   type Notification,
   type NewNotification,
+  type NotificationType,
 } from "@/db/schema/notifications";
 
 export interface INotificationRepository {
@@ -100,7 +101,7 @@ export class NotificationRepository implements INotificationRepository {
       userId: r.userId,
       actorId: r.actorId,
       listId: r.listId,
-      type: r.type as any,
+      type: r.type as NotificationType,
       title: r.title,
       message: r.message,
       isRead: r.isRead,
