@@ -22,6 +22,7 @@ import {
   Play,
   CheckCircle2,
   RotateCcw,
+  Paperclip,
 } from "lucide-react";
 import type { ActivityAction } from "@/db/schema/activities";
 
@@ -355,6 +356,26 @@ function getActivityConfig(activity: ActivityItemData) {
             generated occurrence #{m.occurrenceNumber ?? ""} for{" "}
             <span className="font-semibold">&quot;{m.title || "Task"}&quot;</span>
             {m.dueDate ? ` (due ${m.dueDate})` : ""}
+          </span>
+        ),
+      };
+    case "ATTACHMENT_UPLOADED":
+      return {
+        icon: <Paperclip className="h-3.5 w-3.5 text-blue-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> attached file{" "}
+            <span className="font-semibold">&quot;{m.filename || "file"}&quot;</span>
+          </span>
+        ),
+      };
+    case "ATTACHMENT_DELETED":
+      return {
+        icon: <Paperclip className="h-3.5 w-3.5 text-rose-500" />,
+        text: (
+          <span>
+            <strong className="text-neutral-900 dark:text-neutral-100">{actor}</strong> removed attachment{" "}
+            <span className="font-semibold line-through text-neutral-400">&quot;{m.filename || "file"}&quot;</span>
           </span>
         ),
       };

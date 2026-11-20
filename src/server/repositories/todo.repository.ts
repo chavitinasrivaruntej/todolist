@@ -23,13 +23,18 @@ import {
 } from "@/db/schema/todos";
 import { todoTags, type Tag } from "@/db/schema/tags";
 import { tagRepository, TagRepository, type ITagRepository } from "./tag.repository";
+import {
+  attachmentRepository as defaultAttachmentRepo,
+  AttachmentRepository,
+  type IAttachmentRepository,
+} from "./attachment.repository";
 import type {
   DueDateFilterType,
   SortFieldType,
   SortDirectionType,
 } from "@/lib/validations/todo";
 
-export type TodoWithTags = Todo & { tags: Tag[] };
+export type TodoWithTags = Todo & { tags: Tag[]; attachmentCount?: number };
 
 function addDaysToIsoDate(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -97,10 +102,16 @@ export interface ITodoRepository {
 export class TodoRepository implements ITodoRepository {
   private readonly db: Database;
   private readonly tagRepo?: ITagRepository;
+  private readonly attachmentRepo?: IAttachmentRepository;
 
-  constructor(database: Database = defaultDb, tagRepo?: ITagRepository) {
+  constructor(
+    database: Database = defaultDb,
+    tagRepo?: ITagRepository,
+    attachmentRepo?: IAttachmentRepository
+  ) {
     this.db = database;
     this.tagRepo = tagRepo;
+    this.attachmentRepo = attachmentRepo;
   }
 
   async findAllByListId(
@@ -244,6 +255,8 @@ export class TodoRepository implements ITodoRepository {
 
     const todoIds = rows.map((r) => r.id);
     let tagsMap = new Map<string, Tag[]>();
+    let attachmentCountsMap = new Map<string, number>();
+
     if (process.env.DATABASE_URL) {
       try {
         const tagRepoToUse =
@@ -252,11 +265,21 @@ export class TodoRepository implements ITodoRepository {
       } catch {
         // Fallback for mock environments
       }
+
+      try {
+        const attachmentRepoToUse =
+          this.attachmentRepo ||
+          (this.db === defaultDb ? defaultAttachmentRepo : new AttachmentRepository(this.db));
+        attachmentCountsMap = await attachmentRepoToUse.getAttachmentCountsForTodos(todoIds);
+      } catch {
+        // Fallback for mock environments
+      }
     }
 
     return rows.map((r) => ({
       ...r,
       tags: tagsMap.get(r.id) || [],
+      attachmentCount: attachmentCountsMap.get(r.id) || 0,
     }));
   }
 
@@ -269,6 +292,8 @@ export class TodoRepository implements ITodoRepository {
 
     if (!result) return null;
     let tags: Tag[] = [];
+    let attachmentCount = 0;
+
     if (process.env.DATABASE_URL) {
       try {
         const tagRepoToUse =
@@ -277,8 +302,18 @@ export class TodoRepository implements ITodoRepository {
       } catch {
         // Fallback for mock environments
       }
+
+      try {
+        const attachmentRepoToUse =
+          this.attachmentRepo ||
+          (this.db === defaultDb ? defaultAttachmentRepo : new AttachmentRepository(this.db));
+        const countsMap = await attachmentRepoToUse.getAttachmentCountsForTodos([id]);
+        attachmentCount = countsMap.get(id) || 0;
+      } catch {
+        // Fallback for mock environments
+      }
     }
-    return { ...result, tags };
+    return { ...result, tags, attachmentCount };
   }
 
   async findListIdByTodoId(id: string): Promise<string | null> {

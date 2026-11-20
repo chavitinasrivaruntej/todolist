@@ -23,9 +23,18 @@ export type ActivityAction =
   | "RECURRENCE_PAUSED"
   | "RECURRENCE_RESUMED"
   | "RECURRENCE_ENDED"
-  | "RECURRING_OCCURRENCE_GENERATED";
+  | "RECURRING_OCCURRENCE_GENERATED"
+  | "ATTACHMENT_UPLOADED"
+  | "ATTACHMENT_DELETED";
 
-export type ActivityEntityType = "TODO" | "LIST" | "INVITATION" | "MEMBER" | "TAG" | "RECURRENCE";
+export type ActivityEntityType =
+  | "TODO"
+  | "LIST"
+  | "INVITATION"
+  | "MEMBER"
+  | "TAG"
+  | "RECURRENCE"
+  | "ATTACHMENT";
 
 /**
  * ActivityLogs Table Definition

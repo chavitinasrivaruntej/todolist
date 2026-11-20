@@ -64,6 +64,13 @@
       "when": 1795150000000,
       "tag": "0008_recurring_tasks_and_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795200000000,
+      "tag": "0009_task_file_attachments",
+      "breakpoints": true
     }
   ]
 }

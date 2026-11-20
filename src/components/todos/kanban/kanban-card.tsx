@@ -23,6 +23,7 @@ import { type TodoStatusType } from "@/lib/validations/todo";
 import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges";
 import { RecurrenceBadge } from "@/components/recurrence/recurrence-badge";
 import { TagBadge } from "@/components/tags/tag-badge";
+import { AttachmentCountBadge } from "@/components/todos/attachments/attachment-count-badge";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
@@ -178,6 +179,7 @@ export function KanbanCard({
         {todo.recurrenceRuleId && (
           <RecurrenceBadge occurrenceNumber={todo.occurrenceNumber} />
         )}
+        <AttachmentCountBadge count={todo.attachmentCount} />
       </div>
 
       {/* Tags Badges */}

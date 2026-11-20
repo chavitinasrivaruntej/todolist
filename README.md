@@ -20,12 +20,12 @@ Modern task managers frequently suffer from architectural anti-patterns: bloated
 
 ## 2. Project Development Status
 
-- **Current Development Phase**: **PHASE 8**
+- **Current Development Phase**: **PHASE 10**
 - **Implementation Status**: **100% COMPLETE & VERIFIED**
-- **Repository Milestone**: **Phase 8: Color-Coded Tags, Labels & Multi-Tag Filtering Milestone**
+- **Repository Milestone**: **Phase 10: File Attachments & Asset Management Milestone**
 
 ### Milestone Summary
-The project has successfully completed eight foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, and dynamic color-coded tag organization. Every layer—from Drizzle ORM schemas to React UI components—has undergone rigorous verification with 282 automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database verification.
+The project has successfully completed ten foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, dynamic color-coded tag organization, recurring task scheduling engines, and secure cloud file attachments with asset management. Every layer—from Drizzle ORM schemas and Supabase Storage to React UI components—has undergone rigorous verification with automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database and storage verification.
 
 ---
 
@@ -91,6 +91,21 @@ The project has successfully completed eight foundational development phases, mo
 - **Full RBAC Enforcement**: List OWNER and EDITOR roles can manage and assign tags; VIEWER role is strictly read-only on all tag mutations.
 - **Tag Management Modal**: Dedicated dialog in the list toolbar for creating, renaming, recoloring, and deleting tags.
 - **Activity History Integration**: Activity logging for `TAG_CREATED`, `TAG_UPDATED`, and `TAG_DELETED` events with formatted event feeds.
+
+### Phase 9: Recurring Tasks & Scheduling Engine
+- **Multi-Frequency Scheduling Engine**: Pure date arithmetic recurrence engine supporting `DAILY`, `WEEKLY` (arbitrary weekday sets with fixed weekly anchor avoiding interval drift), `MONTHLY` (anchor day-of-month preserving clamped targets e.g. Jan 31 $\to$ Feb 28 $\to$ Mar 31), `YEARLY` (preserving leap-year Feb 29 targets), and bounded `CUSTOM` intervals.
+- **Occurrence Idempotency**: Series tracking via monotonic `UNIQUE(recurrence_rule_id, occurrence_number)` constraint preventing duplicate generation under concurrent completions, rescheduled tasks, or network retries.
+- **Pure CQRS Read Invariance**: Normal task listing queries (`todo.list`) remain strictly read-only with 0 side-effects.
+- **Multi-Path Occurrence Generation**: Deterministic occurrence generation on task completion (`handleTaskCompletion`), manual list catch-up RPC (`recurrence.syncCatchUp`), and automated background cron (`/api/cron/recurring-tasks`).
+- **Recurrence Lifecycle Controls**: Edit recurring series, pause/resume recurrence rules, cancel series, or detach individual tasks into standalone todos.
+
+### Phase 10: File Attachments & Asset Management
+- **Supabase Storage Integration**: Direct-to-storage signed uploads (120s TTL) and time-limited signed downloads (300s TTL) using private bucket `caize-todo-attachments`.
+- **Two-Phase Deletion & Compensating Sweeper**: Two-phase deletion (`PENDING_DELETION` status $\to$ immediate UI hide $\to$ storage delete $\to$ hard delete row) prevents orphaned storage paths or lost references if storage or application crashes.
+- **Atomic Slot Reservation Under Concurrency**: Bounded 10 attachments per task enforced atomically via `SELECT ... FOR UPDATE` row locks during `createUploadUrl`, eliminating race-condition quota bypasses.
+- **Database Relationship Integrity**: Composite foreign key `(todo_id, list_id) REFERENCES todos(id, list_id) ON DELETE CASCADE` on `todo_attachments` mathematically guaranteeing zero cross-tenant leakage.
+- **Defense-in-Depth Validation**: Strict MIME/extension allowlist (PNG, JPEG, WebP, PDF, DOCX, XLSX, TXT, CSV, MD), 10MB maximum file size, filename sanitization against path traversal, and 16-byte magic byte signature verification on upload confirmation before activation.
+- **Interactive UI Components**: `AttachmentCountBadge` with paperclip icon on List and Kanban task cards, `TaskAttachmentsPanel` with drag-and-drop / file selector, upload progress bar (`0%` $\to$ `100%`), preview modal for images, download button, and activity audit logging (`ATTACHMENT_UPLOADED`, `ATTACHMENT_DELETED`).
 
 ---
 
@@ -183,7 +198,9 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
       │        │        │
       │        │        └──< todos (id, list_id, recurrence_rule_id, occurrence_number, title, description, status, priority, due_date, ...)
       │        │                 │
-      │        │                 └──< todo_tags (todo_id, tag_id) >── tags (id, list_id, name, color)
+      │        │                 ├──< todo_tags (todo_id, tag_id) >── tags (id, list_id, name, color)
+      │        │                 │
+      │        │                 └──< todo_attachments (id, todo_id, list_id, storage_path, original_filename, mime_type, file_size, status, ...)
       │        │
       │        ├──< list_members (id, list_id, user_id, role ['OWNER','EDITOR','VIEWER'], joined_at)
       │        │
@@ -200,6 +217,13 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `todos_list_id_due_date_idx`: Composite index on `todos(list_id, due_date ASC NULLS LAST)` for calendar-based queries.
 - `todos_list_id_priority_idx`: Composite index on `todos(list_id, priority)` for priority facet filtering.
 - `todos_recurrence_rule_occurrence_unique`: Monotonic composite unique constraint on `todos(recurrence_rule_id, occurrence_number)` ensuring idempotent occurrence generation.
+- `todos_id_list_id_unique`: Unique constraint on `todos(id, list_id)` enabling composite foreign key referencing.
+- `todo_attachments_todo_list_fk`: Composite foreign key on `todo_attachments(todo_id, list_id) REFERENCES todos(id, list_id) ON DELETE CASCADE`.
+- `todo_attachments_todo_status_idx`: Composite index on `todo_attachments(todo_id, status)` for rapid task attachment queries.
+- `todo_attachments_list_id_idx`: Index on `todo_attachments(list_id)` for list-scoped queries and cascades.
+- `todo_attachments_storage_path_unique`: Unique constraint on `todo_attachments(storage_path)` preventing path collisions.
+- `todo_attachments_sweeper_idx`: Partial index on `todo_attachments(status, expires_at)` for upload-timeout sweepers.
+- `todo_attachments_pending_deletion_idx`: Partial index on `todo_attachments(status, deleted_at)` for deletion sweepers.
 - `recurrence_rules_list_id_idx`: Index on `recurrence_rules(list_id)` for fast list-scoped schedule resolution.
 - `recurrence_rules_status_next_due_idx`: Composite index on `recurrence_rules(status, next_due_date)` for high-throughput sweeper cron queries.
 - `tags_list_id_idx` & `tags_list_id_name_unique`: Case-insensitive unique constraint on tag names per list.
@@ -216,6 +240,7 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `0006_task_priorities_and_due_dates.sql`: Task priorities (`todo_priority` enum), calendar due dates, and composite indexes.
 - `0007_tags_and_labels.sql`: Color-coded tag definitions, task junction mappings, and multi-tag filtering indexes.
 - `0008_recurring_tasks_and_schedules.sql`: Recurrence schedule templates, recurrence enums, series tracking counters, and unique occurrence constraints.
+- `0009_task_file_attachments.sql`: Task file attachments table (`todo_attachments`), composite foreign key on `(todo_id, list_id)`, attachment status lifecycle enum, storage path constraints, and sweeper indexes.
 
 ---
 
@@ -293,8 +318,8 @@ Caize Todo adheres to rigorous automated quality gates:
 ```bash
 npm test
 ```
-- **38 test files**, **323 unit and integration tests** passing (100% pass rate).
-- Full coverage across validations, repositories, domain services, recurrence calculation engine, tRPC routers, authorization checks, and React UI components.
+- **43 test files**, **383 unit and integration tests** passing (100% pass rate).
+- Full coverage across validations, repositories, domain services, recurrence calculation engine, Supabase storage adapter, attachment validations, magic bytes verification, tRPC routers, authorization checks, and React UI components.
 
 ### TypeScript Compilation Check
 ```bash
@@ -330,14 +355,13 @@ Caize Todo follows a structured 12-phase development trajectory:
 [Phase 7: Priorities, Due Dates & Search] ──► [DONE]
 [Phase 8: Tags, Labels & Multi-Filtering] ──► [DONE]
 [Phase 9: Recurring Tasks & Schedule Engine] ► [DONE]
+[Phase 10: File Attachments & Asset Storage] ─► [DONE]
 ────────────────────────────────────────────────────
-[Phase 10: File Attachments & Asset Storage] ───► [PLANNED]
 [Phase 11: Realtime WebSockets & Live Presence] ─► [PLANNED]
 [Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
 ```
 
-### Planned Future Phases (10 – 12)
-- **Phase 10 (Planned)**: File attachments, document previews, and asset storage integration via Supabase Storage.
+### Planned Future Phases (11 – 12)
 - **Phase 11 (Planned)**: Supabase Realtime WebSocket subscriptions for live collaborator presence and instant board sync.
 - **Phase 12 (Planned)**: Productivity metrics, weekly completion trends, velocity charts, and CSV/JSON export.
 
@@ -345,14 +369,21 @@ Caize Todo follows a structured 12-phase development trajectory:
 
 ## 11. Phase 9 — Recurring Tasks & Scheduling Engine Milestone
 
-This checkpoint marks the official completion, verification, and consolidation of **Phase 9**. All functional and architectural requirements for recurring tasks, multi-frequency schedule calculation, occurrence idempotency, task completion generation, manual catch-up, and background cron processing are implemented, fully tested, documented, and synchronized to GitHub:
+Completed, verified, and consolidated with pure date arithmetic recurrence engine supporting `DAILY`, `WEEKLY`, `MONTHLY`, `YEARLY`, and `CUSTOM` intervals, monotonic occurrence idempotency constraints, read-invariant CQRS listing, and automated background sync.
 
-- **Recurrence Engine**: Pure UTC date arithmetic engine supporting `DAILY`, `WEEKLY` (arbitrary weekday sets with fixed weekly anchor avoiding interval drift), `MONTHLY` (anchor day-of-month preserving clamped targets e.g. Jan 31 $\to$ Feb 28 $\to$ Mar 31), `YEARLY` (preserving leap-year Feb 29 targets), and bounded `CUSTOM` intervals.
-- **Occurrence Idempotency**: Series tracking via monotonic `UNIQUE(recurrence_rule_id, occurrence_number)` constraint preventing duplicate generation under concurrent completions, rescheduled tasks, or network retries.
-- **Pure CQRS Read Invariance**: Normal task listing queries (`todo.list`) remain strictly read-only with 0 side-effects. Occurrence generation occurs deterministically on task completion (`handleTaskCompletion`), manual list catch-up RPC (`recurrence.syncCatchUp`), and automated background cron (`/api/cron/recurring-tasks`).
-- **Verified Test Metrics**: 38 test suites, 323 passing tests, 0 failures.
-- **Build Status**: Production Next.js 16 build verified (`npm run build`).
-- **Database Status**: Migration 0008 applied and verified live on Supabase PostgreSQL.
+---
+
+## 12. Phase 10 — File Attachments & Asset Management Milestone
+
+This checkpoint marks the official completion, verification, and consolidation of **Phase 10**. All functional and architectural requirements for cloud file attachments, Supabase Storage integration, strict multi-tenant authorization, concurrency-safe quota limits, two-phase deletion, and defense-in-depth magic byte validation are implemented, fully tested, documented, and synchronized to GitHub:
+
+- **Supabase Storage Integration**: Direct-to-storage signed uploads (120s TTL) and time-limited signed downloads (300s TTL) using private bucket `caize-todo-attachments`.
+- **Two-Phase Deletion & Compensating Sweeper**: Two-phase deletion (`PENDING_DELETION` status $\to$ immediate UI hide $\to$ storage delete $\to$ hard delete row) prevents orphaned storage paths or lost references if storage or application crashes.
+- **Atomic Slot Reservation Under Concurrency**: Bounded 10 attachments per task enforced atomically via `SELECT ... FOR UPDATE` row locks during `createUploadUrl`, eliminating race-condition quota bypasses.
+- **Database Relationship Integrity**: Composite foreign key `(todo_id, list_id) REFERENCES todos(id, list_id) ON DELETE CASCADE` on `todo_attachments` mathematically guaranteeing zero cross-tenant leakage.
+- **Defense-in-Depth Validation**: Strict MIME/extension allowlist (PNG, JPEG, WebP, PDF, DOCX, XLSX, TXT, CSV, MD), 10MB maximum file size, filename sanitization against path traversal, and 16-byte magic byte signature verification on upload confirmation before activation.
+- **Interactive UI Components**: `AttachmentCountBadge` with paperclip icon on List and Kanban task cards, `TaskAttachmentsPanel` with drag-and-drop / file selector, upload progress bar (`0%` $\to$ `100%`), preview modal for images, download button, and activity audit logging (`ATTACHMENT_UPLOADED`, `ATTACHMENT_DELETED`).
+- **Verified Test Metrics**: 43 test files, 383 passing tests, 0 failures.
+- **Build Status**: Production Next.js 16 Turbopack build verified (`npm run build`).
+- **Database Status**: Migration 0009 applied and verified live on Supabase PostgreSQL with active composite foreign key and storage bucket.
 - **Git Milestone**: Synchronized with `origin/main` on GitHub.
-
-The repository is fully stabilized and positioned for Phase 9 development.

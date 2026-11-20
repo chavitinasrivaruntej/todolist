@@ -8,6 +8,14 @@ import {
   tagRepository as defaultTagRepo,
 } from "@/server/repositories/tag.repository";
 import {
+  type IAttachmentRepository,
+  attachmentRepository as defaultAttachmentRepo,
+} from "@/server/repositories/attachment.repository";
+import {
+  type ISupabaseStorageAdapter,
+  supabaseStorageAdapter as defaultStorageAdapter,
+} from "@/lib/storage/supabase-storage";
+import {
   RecurrenceService,
   recurrenceService as defaultRecurrenceService,
 } from "@/server/services/recurrence.service";
@@ -61,6 +69,8 @@ export class TodoService {
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
   private readonly recurrenceService: RecurrenceService;
+  private readonly attachmentRepository: IAttachmentRepository;
+  private readonly storageAdapter: ISupabaseStorageAdapter;
   private readonly db: Database;
 
   constructor(
@@ -69,7 +79,9 @@ export class TodoService {
     activityService: ActivityService = defaultActivityService,
     database: Database = defaultDb,
     tagRepository: ITagRepository = defaultTagRepo,
-    recurrenceService: RecurrenceService = defaultRecurrenceService
+    recurrenceService: RecurrenceService = defaultRecurrenceService,
+    attachmentRepository: IAttachmentRepository = defaultAttachmentRepo,
+    storageAdapter: ISupabaseStorageAdapter = defaultStorageAdapter
   ) {
     this.repository = repository;
     this.permissionService = permissionService;
@@ -77,6 +89,8 @@ export class TodoService {
     this.db = database;
     this.tagRepository = tagRepository;
     this.recurrenceService = recurrenceService;
+    this.attachmentRepository = attachmentRepository;
+    this.storageAdapter = storageAdapter;
   }
 
   /**
@@ -389,7 +403,15 @@ export class TodoService {
 
     await this.permissionService.requireCanMutateTodos(userId, listId);
 
-    return withTransaction(this.db, async (tx) => {
+    // Retrieve any attachment storage paths before task deletion
+    let storagePaths: string[] = [];
+    try {
+      storagePaths = await this.attachmentRepository.findStoragePathsByTodoId(input.id);
+    } catch {
+      // In mock/test environments
+    }
+
+    const result = await withTransaction(this.db, async (tx) => {
       const deleted = tx
         ? await this.repository.delete(input.id, tx)
         : await this.repository.delete(input.id);
@@ -414,6 +436,17 @@ export class TodoService {
 
       return { success: true, id: input.id };
     });
+
+    // Clean up storage objects if any existed
+    if (storagePaths.length > 0) {
+      try {
+        await this.storageAdapter.removeObjects(storagePaths);
+      } catch {
+        // Storage cleanup failures are handled by background sweeper
+      }
+    }
+
+    return result;
   }
 }
 

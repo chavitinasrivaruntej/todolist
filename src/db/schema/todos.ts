@@ -53,6 +53,7 @@ export const todos = pgTable(
       table.recurrenceRuleId,
       table.occurrenceNumber
     ),
+    unique("todos_id_list_id_unique").on(table.id, table.listId),
   ]
 );
 

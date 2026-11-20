@@ -6,3 +6,4 @@ export * from "./activities";
 export * from "./notifications";
 export * from "./tags";
 export * from "./recurrence";
+export * from "./attachments";

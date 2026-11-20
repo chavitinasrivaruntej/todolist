@@ -16,6 +16,7 @@ import {
   Edit2,
   Check,
   X,
+  Paperclip,
 } from "lucide-react";
 import {
   type TodoStatusType,
@@ -27,6 +28,8 @@ import { PriorityBadge, DueDateBadge } from "@/components/todos/task-meta-badges
 import { RecurrenceBadge } from "@/components/recurrence/recurrence-badge";
 import { TagBadge } from "@/components/tags/tag-badge";
 import { TagSelector } from "@/components/tags/tag-selector";
+import { AttachmentCountBadge } from "@/components/todos/attachments/attachment-count-badge";
+import { TaskAttachmentsPanel } from "@/components/todos/attachments/task-attachments-panel";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
@@ -48,6 +51,7 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [showAttachments, setShowAttachments] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -238,6 +242,13 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
             <p className="text-[11px] text-red-600 dark:text-red-400">{editError}</p>
           )}
 
+          {/* Attachments Section in Edit Mode */}
+          <TaskAttachmentsPanel
+            todoId={todo.id}
+            listId={listId}
+            isReadOnly={isReadOnly}
+          />
+
           <div className="flex justify-end gap-1.5 pt-1">
             <Button
               type="button"
@@ -291,6 +302,9 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
               {todo.recurrenceRuleId && (
                 <RecurrenceBadge occurrenceNumber={todo.occurrenceNumber} />
               )}
+
+              {/* Attachment Count Badge */}
+              <AttachmentCountBadge count={todo.attachmentCount} />
 
               {/* Status Indicator / Dropdown */}
               {isReadOnly ? (
@@ -359,36 +373,64 @@ export function TodoItem({ todo, listId, isReadOnly = false }: TodoItemProps) {
             </div>
           </div>
 
-          {!isReadOnly && (
-            <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsEditing(true)}
-                className="h-7 w-7 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
-                title="Edit task"
-                aria-label={`Edit task: ${todo.title}`}
-              >
-                <Edit2 className="h-3.5 w-3.5" />
-              </Button>
+          <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowAttachments(!showAttachments)}
+              className={`h-7 w-7 transition-colors ${
+                showAttachments || (todo.attachmentCount && todo.attachmentCount > 0)
+                  ? "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40"
+                  : "text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+              }`}
+              title={showAttachments ? "Hide attachments" : "View attachments"}
+              aria-label={`Toggle attachments for: ${todo.title}`}
+            >
+              <Paperclip className="h-3.5 w-3.5" />
+            </Button>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                className="h-7 w-7 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
-                title="Delete todo"
-                aria-label={`Delete todo: ${todo.title}`}
-              >
-                {deleteMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-          )}
+            {!isReadOnly && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsEditing(true)}
+                  className="h-7 w-7 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                  title="Edit task"
+                  aria-label={`Edit task: ${todo.title}`}
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  className="h-7 w-7 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 dark:hover:text-red-400 transition-colors"
+                  title="Delete todo"
+                  aria-label={`Delete todo: ${todo.title}`}
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Attachments Panel in View Mode */}
+      {!isEditing && showAttachments && (
+        <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <TaskAttachmentsPanel
+            todoId={todo.id}
+            listId={listId}
+            isReadOnly={isReadOnly}
+          />
         </div>
       )}
 
