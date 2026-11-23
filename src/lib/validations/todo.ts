@@ -67,6 +67,7 @@ export const createTodoSchema = z.object({
   priority: z.enum(TODO_PRIORITIES).optional().default("MEDIUM"),
   dueDate: dateStringSchema,
   tagIds: z.array(z.string().uuid("Invalid Tag ID format")).optional(),
+  clientSessionId: z.string().optional(),
 });
 
 /**
@@ -75,6 +76,7 @@ export const createTodoSchema = z.object({
 export const updateTodoStatusSchema = z.object({
   id: z.string().uuid("Invalid todo ID format"),
   status: z.enum(TODO_STATUSES),
+  clientSessionId: z.string().optional(),
 });
 
 /**
@@ -97,6 +99,7 @@ export const updateTodoDetailsSchema = z.object({
   priority: z.enum(TODO_PRIORITIES).optional(),
   dueDate: dateStringSchema,
   tagIds: z.array(z.string().uuid("Invalid Tag ID format")).optional(),
+  clientSessionId: z.string().optional(),
 });
 
 /**
@@ -104,6 +107,7 @@ export const updateTodoDetailsSchema = z.object({
  */
 export const deleteTodoSchema = z.object({
   id: z.string().uuid("Invalid todo ID format"),
+  clientSessionId: z.string().optional(),
 });
 
 export type GetTodosByListInput = z.input<typeof getTodosByListSchema>;

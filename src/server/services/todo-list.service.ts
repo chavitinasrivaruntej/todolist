@@ -20,6 +20,10 @@ import {
   NotificationService,
   notificationService as defaultNotificationService,
 } from "@/server/services/notification.service";
+import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
 import { withTransaction } from "@/server/utils/transaction";
 import { db as defaultDb, type Database } from "@/db";
 import {
@@ -40,6 +44,7 @@ export class TodoListService {
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
   private readonly notificationService: NotificationService;
+  private readonly realtimePublisher: IRealtimePublisherService;
   private readonly db: Database;
 
   constructor(
@@ -48,13 +53,15 @@ export class TodoListService {
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
     notificationService: NotificationService = defaultNotificationService,
-    database: Database = defaultDb
+    database: Database = defaultDb,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.repository = repository;
     this.memberRepository = memberRepository;
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.notificationService = notificationService;
+    this.realtimePublisher = realtimePublisher;
     this.db = database;
   }
 
@@ -132,7 +139,7 @@ export class TodoListService {
 
     await this.permissionService.requireOwner(userId, input.id);
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const updated = tx
         ? await this.repository.updateName(input.id, trimmedName, tx)
         : await this.repository.updateName(input.id, trimmedName);
@@ -157,6 +164,20 @@ export class TodoListService {
 
       return updated;
     });
+
+    // Broadcast LIST_UPDATED post-commit
+    try {
+      await this.realtimePublisher.publishListUpdated(
+        result.id,
+        userId,
+        null,
+        result.name
+      );
+    } catch {
+      // Handled silently
+    }
+
+    return result;
   }
 
   /**

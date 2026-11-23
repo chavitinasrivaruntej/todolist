@@ -169,6 +169,7 @@ describe("UI Components", () => {
       dueDate: null,
       recurrenceRuleId: null,
       occurrenceNumber: null,
+      version: 1,
       createdAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       updatedAt: new Date("2026-05-01T12:00:00Z").toISOString(),
       tags: [],

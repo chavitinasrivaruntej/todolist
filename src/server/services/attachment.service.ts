@@ -22,6 +22,10 @@ import {
   supabaseStorageAdapter as defaultStorageAdapter,
 } from "@/lib/storage/supabase-storage";
 import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
+import {
   type CreateUploadUrlInput,
   type ConfirmUploadInput,
   type CreateDownloadUrlInput,
@@ -44,6 +48,7 @@ export class AttachmentService {
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
   private readonly storageAdapter: ISupabaseStorageAdapter;
+  private readonly realtimePublisher: IRealtimePublisherService;
   private readonly db: Database;
 
   constructor(
@@ -52,13 +57,15 @@ export class AttachmentService {
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
     storageAdapter: ISupabaseStorageAdapter = defaultStorageAdapter,
-    database: Database = defaultDb
+    database: Database = defaultDb,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.repository = repository;
     this.todoRepository = todoRepository;
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.storageAdapter = storageAdapter;
+    this.realtimePublisher = realtimePublisher;
     this.db = database;
   }
 
@@ -189,7 +196,7 @@ export class AttachmentService {
     }
 
     // Atomically transition status to ACTIVE and log activity
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const activeAttachment = await this.repository.markActive(attachment.id, tx);
       if (!activeAttachment) {
         throw new NotFoundError(`Failed to activate attachment ${attachment.id}.`);
@@ -214,6 +221,24 @@ export class AttachmentService {
 
       return activeAttachment;
     });
+
+    // Broadcast attachment count update post-commit
+    try {
+      const countsMap = await this.repository.getAttachmentCountsForTodos([result.todoId]);
+      const count = countsMap.get(result.todoId) || 0;
+      await this.realtimePublisher.publishTaskAttachmentUpdated(
+        result.listId,
+        userId,
+        null,
+        result.todoId,
+        count,
+        1
+      );
+    } catch {
+      // Handled silently
+    }
+
+    return result;
   }
 
   /**
@@ -309,6 +334,22 @@ export class AttachmentService {
       await this.repository.hardDelete(attachment.id);
     }
     // If storage deletion temporarily fails, row remains PENDING_DELETION for background retry
+
+    // Broadcast attachment count update post-deletion
+    try {
+      const countsMap = await this.repository.getAttachmentCountsForTodos([attachment.todoId]);
+      const count = countsMap.get(attachment.todoId) || 0;
+      await this.realtimePublisher.publishTaskAttachmentUpdated(
+        attachment.listId,
+        userId,
+        null,
+        attachment.todoId,
+        count,
+        1
+      );
+    } catch {
+      // Handled silently
+    }
 
     return {
       success: true,

@@ -28,6 +28,10 @@ import {
   notificationService as defaultNotificationService,
 } from "@/server/services/notification.service";
 import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
+import {
   type InviteCollaboratorInput,
 } from "@/lib/validations/sharing";
 import { NotFoundError, ValidationError } from "@/server/errors";
@@ -42,6 +46,7 @@ export class InvitationService {
   private readonly emailService: IEmailService;
   private readonly activityService: ActivityService;
   private readonly notificationService: NotificationService;
+  private readonly realtimePublisher: IRealtimePublisherService;
 
   constructor(
     invitationRepo: IInvitationRepository = defaultInvitationRepo,
@@ -50,7 +55,8 @@ export class InvitationService {
     permissionService: ListPermissionService = defaultPermissionService,
     emailService: IEmailService = defaultEmailService,
     activityService: ActivityService = defaultActivityService,
-    notificationService: NotificationService = defaultNotificationService
+    notificationService: NotificationService = defaultNotificationService,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.invitationRepo = invitationRepo;
     this.listRepo = listRepo;
@@ -59,6 +65,7 @@ export class InvitationService {
     this.emailService = emailService;
     this.activityService = activityService;
     this.notificationService = notificationService;
+    this.realtimePublisher = realtimePublisher;
   }
 
   /**
@@ -350,6 +357,20 @@ export class InvitationService {
       } catch {
         // Safe fallback
       }
+    }
+
+    // Broadcast COLLABORATOR_CHANGED (ADDED)
+    try {
+      await this.realtimePublisher.publishCollaboratorChanged(
+        list.id,
+        userId,
+        null,
+        "ADDED",
+        userId,
+        invitation.role
+      );
+    } catch {
+      // Safe fallback
     }
 
     return {

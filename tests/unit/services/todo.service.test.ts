@@ -25,9 +25,11 @@ describe("TodoService", () => {
     dueDate: null,
     recurrenceRuleId: null,
     occurrenceNumber: null,
+    version: 1,
     createdAt: mockDate,
     updatedAt: mockDate,
     tags: [],
+    attachmentCount: 0,
   };
 
   beforeEach(() => {

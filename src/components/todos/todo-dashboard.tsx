@@ -15,6 +15,10 @@ import { useListViewPreference } from "@/hooks/use-list-view-preference";
 import { UserMenu } from "@/components/auth/user-menu";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ShareListDialog } from "@/components/sharing/share-list-dialog";
+import { CollaboratorAvatarGroup } from "@/components/realtime/collaborator-avatar-group";
+import { RealtimeStatusBadge } from "@/components/realtime/realtime-status-badge";
+import { useRealtimeBoard } from "@/hooks/use-realtime-board";
+import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +48,32 @@ function TodoDashboardInner() {
   const [filters, setFilters] = useState<TaskFilterState>(initialFilters);
   const [filteredCount, setFilteredCount] = useState<number | undefined>(undefined);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    displayName?: string;
+    avatarUrl?: string;
+  } | null>(null);
+
+  // Load current user for presence tracking
+  useEffect(() => {
+    try {
+      const supabase = createClient();
+      supabase.auth.getUser().then(({ data }) => {
+        if (data.user) {
+          const meta = data.user.user_metadata || {};
+          const displayName =
+            meta.name || meta.full_name || data.user.email?.split("@")[0] || "User";
+          setCurrentUser({
+            id: data.user.id,
+            displayName,
+            avatarUrl: meta.avatar_url,
+          });
+        }
+      });
+    } catch {
+      // Mock/test environment fallback
+    }
+  }, []);
 
   const { data: lists, isLoading } = trpc.todoList.list.useQuery();
   const { data: listTags = [] } = trpc.tag.listByList.useQuery(
@@ -51,6 +81,21 @@ function TodoDashboardInner() {
     { enabled: Boolean(selectedListId) }
   );
   const { viewMode, setViewMode } = useListViewPreference(selectedListId);
+
+  const activeList = lists?.find((l) => l.id === selectedListId);
+  const effectiveRole = activeList?.effectiveRole ?? "OWNER";
+  const isOwner = effectiveRole === "OWNER";
+  const isReadOnly = effectiveRole === "VIEWER";
+  const isEditor = effectiveRole === "EDITOR";
+
+  // Realtime board updates & presence
+  const { status: realtimeStatus, collaborators } = useRealtimeBoard({
+    listId: selectedListId,
+    filters,
+    currentUser,
+    effectiveRole,
+    activeView: viewMode,
+  });
 
   // Automatically select first list or urlListId when lists are loaded
   useEffect(() => {
@@ -81,12 +126,6 @@ function TodoDashboardInner() {
     setFilters(initialFilters);
   };
 
-  const activeList = lists?.find((l) => l.id === selectedListId);
-  const effectiveRole = activeList?.effectiveRole ?? "OWNER";
-  const isOwner = effectiveRole === "OWNER";
-  const isReadOnly = effectiveRole === "VIEWER";
-  const isEditor = effectiveRole === "EDITOR";
-
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       {/* Header */}
@@ -100,10 +139,11 @@ function TodoDashboardInner() {
               Caize Tasks
             </h1>
             <Badge variant="outline" className="text-[10px] font-normal text-neutral-500">
-              Phase 8: Color-Coded Tags & Labels
+              Phase 11: Realtime Collaborator Presence & Board Updates
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <RealtimeStatusBadge status={realtimeStatus} />
             <NotificationBell onSelectList={(id) => handleSelectList(id)} />
             <UserMenu />
           </div>
@@ -162,7 +202,13 @@ function TodoDashboardInner() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-2.5 ml-auto">
+                  {/* Live Collaborators Presence Stack */}
+                  <CollaboratorAvatarGroup
+                    collaborators={collaborators}
+                    currentUserId={currentUser?.id}
+                  />
+
                   {/* Tags Manager Button */}
                   <Button
                     variant="outline"

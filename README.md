@@ -20,16 +20,16 @@ Modern task managers frequently suffer from architectural anti-patterns: bloated
 
 ## 2. Project Development Status
 
-- **Current Development Phase**: **PHASE 10**
+- **Current Development Phase**: **PHASE 11**
 - **Implementation Status**: **100% COMPLETE & VERIFIED**
-- **Repository Milestone**: **Phase 10: File Attachments & Asset Management Milestone**
+- **Repository Milestone**: **Phase 11: Live Collaborator Presence & Realtime Board Updates Milestone**
 
 ### Milestone Summary
-The project has successfully completed ten foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, dynamic color-coded tag organization, recurring task scheduling engines, and secure cloud file attachments with asset management. Every layer—from Drizzle ORM schemas and Supabase Storage to React UI components—has undergone rigorous verification with automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database and storage verification.
+The project has successfully completed eleven foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, dynamic color-coded tag organization, recurring task scheduling engines, secure cloud file attachments, and live collaborator presence with realtime board synchronization. Every layer—from Drizzle ORM schemas and Supabase Storage to Supabase Realtime WebSocket presence and React UI components—has undergone rigorous verification with automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database and realtime verification.
 
 ---
 
-## 3. Implemented Features (Phases 1 – 8)
+## 3. Implemented Features (Phases 1 – 11)
 
 ### Phase 1: Core Architecture & Single-List Persistence
 - Modular monolith directory structure separating presentation, tRPC API routes, domain services, data repositories, and Drizzle schemas.
@@ -106,6 +106,15 @@ The project has successfully completed ten foundational development phases, movi
 - **Database Relationship Integrity**: Composite foreign key `(todo_id, list_id) REFERENCES todos(id, list_id) ON DELETE CASCADE` on `todo_attachments` mathematically guaranteeing zero cross-tenant leakage.
 - **Defense-in-Depth Validation**: Strict MIME/extension allowlist (PNG, JPEG, WebP, PDF, DOCX, XLSX, TXT, CSV, MD), 10MB maximum file size, filename sanitization against path traversal, and 16-byte magic byte signature verification on upload confirmation before activation.
 - **Interactive UI Components**: `AttachmentCountBadge` with paperclip icon on List and Kanban task cards, `TaskAttachmentsPanel` with drag-and-drop / file selector, upload progress bar (`0%` $\to$ `100%`), preview modal for images, download button, and activity audit logging (`ATTACHMENT_UPLOADED`, `ATTACHMENT_DELETED`).
+
+### Phase 11: Live Collaborator Presence & Realtime Board Updates
+- **Supabase Realtime WebSocket Channels**: Zero-fallback private channels (`list:LIST_ID`). Channel authorization is strictly validated pre-flight via tRPC `realtime.authorizeChannel` against list membership roles (`OWNER`, `EDITOR`, `VIEWER`). Non-members are rejected; unauthenticated degradation to public channels is architecturally forbidden.
+- **Post-Commit Broadcast Pipeline**: Domain services execute atomic SQL transactions first (`withTransaction`), followed by post-commit asynchronous broadcasts of typed domain events (`TASK_CREATED`, `TASK_UPDATED`, `TASK_STATUS_CHANGED`, `TASK_DELETED`, `TASK_ATTACHMENT_UPDATED`, `LIST_UPDATED`, `COLLABORATOR_CHANGED`) with structured error logging.
+- **Monotonic Integer Task Versioning**: Monotonic `version` column on `todos` incremented atomically (`version = version + 1`) during mutations. Incoming realtime events with `event.version <= cached.version` are strictly rejected by the client, preventing out-of-order race conditions and clock-skew corruptions.
+- **Multi-Tab Synchronization & Deduplication**: Each browser tab generates an ephemeral `clientSessionId`. Originating tabs bypass redundant cache mutations to preserve optimistic UI states, while secondary tabs of the same collaborator update their UI instantaneously.
+- **Filter-Aware Cache Reconciliation**: Live task creation events evaluate active client-side search queries, priorities, and tag filters before mutating the TanStack Query cache, ensuring active filtered views remain strictly accurate.
+- **Live Presence & Collaborator Avatars**: Realtime presence tracking broadcasts active view (`LIST`, `BOARD`, `ACTIVITY`), current editing focus (`editingTodoId`), and user role. The `CollaboratorAvatarGroup` component groups multiple open tabs per user, displaying tab badges (`2`), status tooltips, and deterministic avatar colors.
+- **Authoritative Reconnection Recovery**: Reconnection events and background tab re-focus (`visibilitychange`) trigger authoritative TanStack Query cache invalidations, guaranteeing eventual consistency even after transient WebSocket disconnects or dropped ephemeral broadcast packets.
 
 ---
 
@@ -241,6 +250,7 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `0007_tags_and_labels.sql`: Color-coded tag definitions, task junction mappings, and multi-tag filtering indexes.
 - `0008_recurring_tasks_and_schedules.sql`: Recurrence schedule templates, recurrence enums, series tracking counters, and unique occurrence constraints.
 - `0009_task_file_attachments.sql`: Task file attachments table (`todo_attachments`), composite foreign key on `(todo_id, list_id)`, attachment status lifecycle enum, storage path constraints, and sweeper indexes.
+- `0010_task_versioning.sql`: Monotonic integer `version` column on `todos` table with default 1 and not-null constraint for race-free optimistic concurrency control.
 
 ---
 
@@ -356,13 +366,12 @@ Caize Todo follows a structured 12-phase development trajectory:
 [Phase 8: Tags, Labels & Multi-Filtering] ──► [DONE]
 [Phase 9: Recurring Tasks & Schedule Engine] ► [DONE]
 [Phase 10: File Attachments & Asset Storage] ─► [DONE]
+[Phase 11: Realtime WebSockets & Live Presence] ─► [DONE]
 ────────────────────────────────────────────────────
-[Phase 11: Realtime WebSockets & Live Presence] ─► [PLANNED]
 [Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
 ```
 
-### Planned Future Phases (11 – 12)
-- **Phase 11 (Planned)**: Supabase Realtime WebSocket subscriptions for live collaborator presence and instant board sync.
+### Planned Future Phases (12)
 - **Phase 12 (Planned)**: Productivity metrics, weekly completion trends, velocity charts, and CSV/JSON export.
 
 ---
@@ -386,4 +395,22 @@ This checkpoint marks the official completion, verification, and consolidation o
 - **Verified Test Metrics**: 43 test files, 383 passing tests, 0 failures.
 - **Build Status**: Production Next.js 16 Turbopack build verified (`npm run build`).
 - **Database Status**: Migration 0009 applied and verified live on Supabase PostgreSQL with active composite foreign key and storage bucket.
+- **Git Milestone**: Synchronized with `origin/main` on GitHub.
+
+---
+
+## 13. Phase 11 — Live Collaborator Presence & Realtime Board Updates Milestone
+
+This checkpoint marks the official completion, verification, and consolidation of **Phase 11**. All functional and architectural requirements for real-time WebSocket board synchronization, zero-fallback private channels, post-commit domain event broadcasts, monotonic integer task versioning, multi-tab deduplication, filter-aware cache patching, and live collaborator presence tracking are implemented, fully tested, documented, and synchronized to GitHub:
+
+- **Private WebSocket Channels**: Realtime channels are private-only (`list:LIST_ID`). Authorization is verified pre-flight via tRPC `realtime.authorizeChannel` against list membership roles (`OWNER`, `EDITOR`, `VIEWER`). Non-members are rejected; unauthenticated degradation to public channels is architecturally forbidden.
+- **Post-Commit Broadcast Pipeline**: Atomic SQL transactions execute first, followed by post-commit asynchronous broadcasts of typed domain events (`TASK_CREATED`, `TASK_UPDATED`, `TASK_STATUS_CHANGED`, `TASK_DELETED`, `TASK_ATTACHMENT_UPDATED`, `LIST_UPDATED`, `COLLABORATOR_CHANGED`) with structured error logging.
+- **Monotonic Integer Task Versioning**: Monotonic `version` column on `todos` incremented atomically (`version = version + 1`) during mutations. Incoming realtime events with `event.version <= cached.version` are strictly rejected by the client, preventing out-of-order race conditions and clock-skew corruptions.
+- **Multi-Tab Synchronization & Deduplication**: Each browser tab generates an ephemeral `clientSessionId`. Originating tabs bypass redundant cache mutations to preserve optimistic UI states, while secondary tabs of the same collaborator update their UI instantaneously.
+- **Filter-Aware Cache Reconciliation**: Live task creation events evaluate active client-side search queries, priorities, and tag filters before mutating the TanStack Query cache, ensuring active filtered views remain strictly accurate.
+- **Live Presence & Collaborator Avatars**: Realtime presence tracking broadcasts active view (`LIST`, `BOARD`, `ACTIVITY`), current editing focus (`editingTodoId`), and user role. The `CollaboratorAvatarGroup` component groups multiple open tabs per user, displaying tab badges (`2`), status tooltips, and deterministic avatar colors.
+- **Authoritative Reconnection Recovery**: Reconnection events and background tab re-focus (`visibilitychange`) trigger authoritative TanStack Query cache invalidations, guaranteeing eventual consistency even after transient WebSocket disconnects or dropped ephemeral broadcast packets.
+- **Verified Test Metrics**: 48 test files, 404 passing tests, 0 failures.
+- **Build Status**: Production Next.js 16 Turbopack build verified (`npm run build`).
+- **Database Status**: Migration 0010 applied and verified live on Supabase PostgreSQL with active `version` column.
 - **Git Milestone**: Synchronized with `origin/main` on GitHub.

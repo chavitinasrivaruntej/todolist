@@ -13,6 +13,7 @@ import { todoListService } from "@/server/services/todo-list.service";
 import { listPermissionService } from "@/server/services/list-permission.service";
 import { activityService } from "@/server/services/activity.service";
 import { notificationService } from "@/server/services/notification.service";
+import { realtimePublisherService } from "@/server/services/realtime-publisher.service";
 import { listMemberRepository } from "@/server/repositories/list-member.repository";
 import { invitationRepository } from "@/server/repositories/invitation.repository";
 import { todoListRepository } from "@/server/repositories/todo-list.repository";
@@ -165,6 +166,20 @@ export const sharingRouter = createTRPCRouter({
         // Safe notification fallback
       }
 
+      // Broadcast COLLABORATOR_CHANGED (ROLE_UPDATED)
+      try {
+        await realtimePublisherService.publishCollaboratorChanged(
+          member.listId,
+          ctx.user.id,
+          null,
+          "ROLE_UPDATED",
+          member.userId,
+          input.role
+        );
+      } catch {
+        // Safe fallback
+      }
+
       return updated;
     }),
 
@@ -225,6 +240,19 @@ export const sharingRouter = createTRPCRouter({
         });
       } catch {
         // Safe notification fallback
+      }
+
+      // Broadcast COLLABORATOR_CHANGED (REMOVED)
+      try {
+        await realtimePublisherService.publishCollaboratorChanged(
+          member.listId,
+          ctx.user.id,
+          null,
+          "REMOVED",
+          member.userId
+        );
+      } catch {
+        // Safe fallback
       }
 
       return { success: true, memberId: input.memberId };

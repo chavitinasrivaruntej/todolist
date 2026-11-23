@@ -90,6 +90,7 @@ describe("tRPC API: Recurrence Router", () => {
           dueDate: "2026-01-12",
           recurrenceRuleId: sampleRuleId,
           occurrenceNumber: 1,
+          version: 1,
           createdAt: new Date(),
           updatedAt: new Date(),
           tags: [],

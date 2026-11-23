@@ -16,6 +16,10 @@ import {
   supabaseStorageAdapter as defaultStorageAdapter,
 } from "@/lib/storage/supabase-storage";
 import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
+import {
   RecurrenceService,
   recurrenceService as defaultRecurrenceService,
 } from "@/server/services/recurrence.service";
@@ -48,6 +52,7 @@ export interface CreateTodoServiceInput {
   tagIds?: string[];
   recurrenceRuleId?: string | null;
   occurrenceNumber?: number | null;
+  clientSessionId?: string | null;
 }
 
 export interface UpdateTodoDetailsServiceInput {
@@ -57,6 +62,7 @@ export interface UpdateTodoDetailsServiceInput {
   priority?: TodoPriority;
   dueDate?: string | null;
   tagIds?: string[];
+  clientSessionId?: string | null;
 }
 
 /**
@@ -71,6 +77,7 @@ export class TodoService {
   private readonly recurrenceService: RecurrenceService;
   private readonly attachmentRepository: IAttachmentRepository;
   private readonly storageAdapter: ISupabaseStorageAdapter;
+  private readonly realtimePublisher: IRealtimePublisherService;
   private readonly db: Database;
 
   constructor(
@@ -81,7 +88,8 @@ export class TodoService {
     tagRepository: ITagRepository = defaultTagRepo,
     recurrenceService: RecurrenceService = defaultRecurrenceService,
     attachmentRepository: IAttachmentRepository = defaultAttachmentRepo,
-    storageAdapter: ISupabaseStorageAdapter = defaultStorageAdapter
+    storageAdapter: ISupabaseStorageAdapter = defaultStorageAdapter,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.repository = repository;
     this.permissionService = permissionService;
@@ -91,6 +99,7 @@ export class TodoService {
     this.recurrenceService = recurrenceService;
     this.attachmentRepository = attachmentRepository;
     this.storageAdapter = storageAdapter;
+    this.realtimePublisher = realtimePublisher;
   }
 
   /**
@@ -146,7 +155,7 @@ export class TodoService {
       assignedTags = verified;
     }
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const todoData: Parameters<typeof this.repository.create>[0] = {
         listId: input.listId,
         title: trimmedTitle,
@@ -193,6 +202,20 @@ export class TodoService {
         tags: assignedTags,
       };
     });
+
+    // Broadcast TASK_CREATED event post-commit
+    try {
+      await this.realtimePublisher.publishTaskCreated(
+        input.listId,
+        userId,
+        input.clientSessionId ?? null,
+        result
+      );
+    } catch {
+      // Handled silently inside publisher
+    }
+
+    return result;
   }
 
   /**
@@ -220,7 +243,7 @@ export class TodoService {
       return existing;
     }
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const updated = tx
         ? await this.repository.updateStatus(input.id, input.status, tx)
         : await this.repository.updateStatus(input.id, input.status);
@@ -250,8 +273,29 @@ export class TodoService {
         await this.recurrenceService.handleTaskCompletion(updated, userId, tx);
       }
 
-      return { ...updated, tags: existing.tags };
+      return {
+        ...updated,
+        tags: existing.tags,
+        attachmentCount: existing.attachmentCount ?? 0,
+      };
     });
+
+    // Broadcast TASK_STATUS_CHANGED event post-commit
+    try {
+      await this.realtimePublisher.publishTaskStatusChanged(
+        listId,
+        userId,
+        input.clientSessionId ?? null,
+        result.id,
+        result.status,
+        result.version ?? 1,
+        result.updatedAt.toISOString()
+      );
+    } catch {
+      // Handled silently inside publisher
+    }
+
+    return result;
   }
 
   /**
@@ -325,7 +369,7 @@ export class TodoService {
       return existing;
     }
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const details = {
         title: trimmedTitle,
         description: input.description,
@@ -384,8 +428,33 @@ export class TodoService {
       return {
         ...updated,
         tags: input.tagIds !== undefined ? verifiedTags : existing.tags,
+        attachmentCount: existing.attachmentCount ?? 0,
       };
     });
+
+    // Broadcast TASK_UPDATED event post-commit
+    try {
+      await this.realtimePublisher.publishTaskUpdated(
+        listId,
+        userId,
+        input.clientSessionId ?? null,
+        {
+          id: result.id,
+          title: result.title,
+          description: result.description,
+          priority: result.priority,
+          dueDate: result.dueDate,
+          tags: result.tags,
+          attachmentCount: result.attachmentCount,
+          version: result.version ?? 1,
+          updatedAt: result.updatedAt.toISOString(),
+        }
+      );
+    } catch {
+      // Handled silently inside publisher
+    }
+
+    return result;
   }
 
   /**
@@ -444,6 +513,18 @@ export class TodoService {
       } catch {
         // Storage cleanup failures are handled by background sweeper
       }
+    }
+
+    // Broadcast TASK_DELETED event post-commit
+    try {
+      await this.realtimePublisher.publishTaskDeleted(
+        listId,
+        userId,
+        input.clientSessionId ?? null,
+        input.id
+      );
+    } catch {
+      // Handled silently inside publisher
     }
 
     return result;

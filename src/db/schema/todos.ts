@@ -37,6 +37,7 @@ export const todos = pgTable(
     status: todoStatusEnum("status").default("TODO").notNull(),
     priority: todoPriorityEnum("priority").default("MEDIUM").notNull(),
     dueDate: date("due_date", { mode: "string" }),
+    version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

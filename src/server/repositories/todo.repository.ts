@@ -374,6 +374,7 @@ export class TodoRepository implements ITodoRepository {
       .set({
         status,
         updatedAt: new Date(),
+        version: sql`${todos.version} + 1`,
       })
       .where(eq(todos.id, id))
       .returning();
@@ -392,8 +393,9 @@ export class TodoRepository implements ITodoRepository {
     tx?: DbExecutor
   ): Promise<Todo | null> {
     const executor = tx ?? this.db;
-    const updateSet: Partial<typeof todos.$inferInsert> = {
+    const updateSet: Record<string, unknown> = {
       updatedAt: new Date(),
+      version: sql`${todos.version} + 1`,
     };
     if (data.title !== undefined) updateSet.title = data.title;
     if (data.description !== undefined) updateSet.description = data.description;
