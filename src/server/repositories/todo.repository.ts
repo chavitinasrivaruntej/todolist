@@ -55,6 +55,12 @@ export interface FindTodosOptions {
   tagOperator?: "AND" | "OR";
 }
 
+export interface DeletedTodoResult {
+  id: string;
+  listId: string;
+  version: number;
+}
+
 export interface ITodoRepository {
   findAllByListId(listId: string, options?: FindTodosOptions): Promise<TodoWithTags[]>;
   findById(id: string): Promise<TodoWithTags | null>;
@@ -83,7 +89,15 @@ export interface ITodoRepository {
     },
     tx?: DbExecutor
   ): Promise<Todo | null>;
-  delete(id: string, tx?: DbExecutor): Promise<boolean>;
+  delete(id: string, tx?: DbExecutor): Promise<DeletedTodoResult | null>;
+  incrementVersion(
+    id: string,
+    tx?: DbExecutor
+  ): Promise<{ id: string; listId: string; version: number } | null>;
+  incrementVersions(
+    ids: string[],
+    tx?: DbExecutor
+  ): Promise<Array<{ id: string; listId: string; version: number }>>;
   findByRecurrenceRuleAndOccurrence(
     recurrenceRuleId: string,
     occurrenceNumber: number,
@@ -411,14 +425,47 @@ export class TodoRepository implements ITodoRepository {
     return updated ?? null;
   }
 
-  async delete(id: string, tx?: DbExecutor): Promise<boolean> {
+  async delete(id: string, tx?: DbExecutor): Promise<DeletedTodoResult | null> {
     const executor = tx ?? this.db;
-    const deleted = await executor
+    const [deleted] = await executor
       .delete(todos)
       .where(eq(todos.id, id))
-      .returning({ id: todos.id });
+      .returning({ id: todos.id, listId: todos.listId, version: todos.version });
 
-    return deleted.length > 0;
+    return deleted ?? null;
+  }
+
+  async incrementVersion(
+    id: string,
+    tx?: DbExecutor
+  ): Promise<{ id: string; listId: string; version: number } | null> {
+    const executor = tx ?? this.db;
+    const [updated] = await executor
+      .update(todos)
+      .set({
+        version: sql`${todos.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(todos.id, id))
+      .returning({ id: todos.id, listId: todos.listId, version: todos.version });
+
+    return updated ?? null;
+  }
+
+  async incrementVersions(
+    ids: string[],
+    tx?: DbExecutor
+  ): Promise<Array<{ id: string; listId: string; version: number }>> {
+    if (ids.length === 0) return [];
+    const executor = tx ?? this.db;
+    return executor
+      .update(todos)
+      .set({
+        version: sql`${todos.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(inArray(todos.id, ids))
+      .returning({ id: todos.id, listId: todos.listId, version: todos.version });
   }
 
   async findByRecurrenceRuleAndOccurrence(
@@ -469,6 +516,7 @@ export class TodoRepository implements ITodoRepository {
         recurrenceRuleId: null,
         occurrenceNumber: null,
         updatedAt: new Date(),
+        version: sql`${todos.version} + 1`,
       })
       .where(eq(todos.id, id))
       .returning();

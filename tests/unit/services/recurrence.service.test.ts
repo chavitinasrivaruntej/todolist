@@ -86,6 +86,8 @@ describe("RecurrenceService", () => {
         recurrenceRuleId: null,
         occurrenceNumber: null,
       }),
+      incrementVersion: vi.fn().mockResolvedValue({ id: sampleTodo.id, listId: sampleListId, version: 2 }),
+      incrementVersions: vi.fn().mockResolvedValue([]),
     };
 
     mockTagRepo = {
@@ -93,6 +95,7 @@ describe("RecurrenceService", () => {
       findById: vi.fn().mockResolvedValue(null),
       findByNameAndListId: vi.fn().mockResolvedValue(null),
       findByIdsAndListId: vi.fn().mockResolvedValue([]),
+      findTodoIdsByTagId: vi.fn().mockResolvedValue([]),
       findTagsForTodo: vi.fn().mockResolvedValue([]),
       findTagsForTodos: vi.fn().mockResolvedValue(new Map()),
       create: vi.fn(),

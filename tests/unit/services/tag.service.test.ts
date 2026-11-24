@@ -32,6 +32,7 @@ describe("TagService", () => {
       findByIdsAndListId: vi.fn().mockResolvedValue([sampleTag]),
       findTagsForTodo: vi.fn().mockResolvedValue([sampleTag]),
       findTagsForTodos: vi.fn().mockResolvedValue(new Map()),
+      findTodoIdsByTagId: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue(sampleTag),
       update: vi.fn().mockResolvedValue(sampleTag),
       delete: vi.fn().mockResolvedValue(true),

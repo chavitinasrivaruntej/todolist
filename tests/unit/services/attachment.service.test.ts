@@ -73,6 +73,8 @@ describe("AttachmentService", () => {
       findByRecurrenceRuleAndOccurrence: vi.fn(),
       findActiveOccurrenceByRuleId: vi.fn(),
       detachRecurrence: vi.fn(),
+      incrementVersion: vi.fn().mockResolvedValue({ id: "todo-1", listId: "list-1", version: 2 }),
+      incrementVersions: vi.fn().mockResolvedValue([]),
     };
 
     mockPermissionService = {

@@ -208,6 +208,13 @@ export class TodoListService {
       throw new NotFoundError(`Todo list with ID ${input.id} was not found.`);
     }
 
+    // Broadcast LIST_DELETED post-commit to notify active channel subscribers
+    try {
+      await this.realtimePublisher.publishListDeleted(input.id, userId, null);
+    } catch {
+      // Handled silently inside publisher
+    }
+
     return { success: true, id: input.id };
   }
 
@@ -242,6 +249,19 @@ export class TodoListService {
       entityType: "MEMBER",
       metadata: { userId },
     });
+
+    // Broadcast COLLABORATOR_CHANGED (REMOVED) post-commit
+    try {
+      await this.realtimePublisher.publishCollaboratorChanged(
+        input.listId,
+        userId,
+        null,
+        "REMOVED",
+        userId
+      );
+    } catch {
+      // Handled silently inside publisher
+    }
 
     try {
       const existingList = await this.repository.findById(input.listId);

@@ -38,7 +38,7 @@ import {
   type GetTodosByListInput,
   type UpdateTodoStatusInput,
 } from "@/lib/validations/todo";
-import { type TodoStatus, type TodoPriority } from "@/db/schema/todos";
+import { type Todo, type TodoStatus, type TodoPriority } from "@/db/schema/todos";
 import { type Tag } from "@/db/schema/tags";
 import { NotFoundError, ValidationError } from "@/server/errors";
 
@@ -243,6 +243,7 @@ export class TodoService {
       return existing;
     }
 
+    let nextOccurrence: Todo | null = null;
     const result = await withTransaction(this.db, async (tx) => {
       const updated = tx
         ? await this.repository.updateStatus(input.id, input.status, tx)
@@ -270,7 +271,7 @@ export class TodoService {
 
       // Trigger automatic occurrence generation when a recurring task is completed
       if (input.status === "DONE" && existing.recurrenceRuleId) {
-        await this.recurrenceService.handleTaskCompletion(updated, userId, tx);
+        nextOccurrence = await this.recurrenceService.handleTaskCompletion(updated, userId, tx);
       }
 
       return {
@@ -293,6 +294,23 @@ export class TodoService {
       );
     } catch {
       // Handled silently inside publisher
+    }
+
+    // If an automatic next occurrence was generated, broadcast TASK_CREATED post-commit
+    if (nextOccurrence) {
+      try {
+        const fullNext = await this.repository.findById((nextOccurrence as Todo).id);
+        if (fullNext) {
+          await this.realtimePublisher.publishTaskCreated(
+            listId,
+            userId,
+            input.clientSessionId ?? null,
+            fullNext
+          );
+        }
+      } catch {
+        // Handled silently inside publisher
+      }
     }
 
     return result;
@@ -480,6 +498,11 @@ export class TodoService {
       // In mock/test environments
     }
 
+    const existing = await this.repository.findById(input.id);
+    if (!existing) {
+      throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
+    }
+
     const result = await withTransaction(this.db, async (tx) => {
       const deleted = tx
         ? await this.repository.delete(input.id, tx)
@@ -488,6 +511,11 @@ export class TodoService {
       if (!deleted) {
         throw new NotFoundError(`Todo with ID ${input.id} was not found.`);
       }
+
+      const finalVersion =
+        typeof deleted === "object" && "version" in deleted
+          ? (deleted as { version: number }).version
+          : (existing.version ?? 1);
 
       await this.activityService.logActivity(
         {
@@ -498,12 +526,13 @@ export class TodoService {
           entityId: input.id,
           metadata: {
             id: input.id,
+            finalVersion,
           },
         },
         tx
       );
 
-      return { success: true, id: input.id };
+      return { success: true, id: input.id, version: finalVersion };
     });
 
     // Clean up storage objects if any existed
@@ -515,19 +544,20 @@ export class TodoService {
       }
     }
 
-    // Broadcast TASK_DELETED event post-commit
+    // Broadcast TASK_DELETED event post-commit with true final version
     try {
       await this.realtimePublisher.publishTaskDeleted(
         listId,
         userId,
         input.clientSessionId ?? null,
-        input.id
+        input.id,
+        result.version
       );
     } catch {
       // Handled silently inside publisher
     }
 
-    return result;
+    return { success: result.success, id: result.id };
   }
 }
 
