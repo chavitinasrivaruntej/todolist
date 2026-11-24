@@ -12,7 +12,9 @@ export const REALTIME_EVENT_TYPES = [
   "TASK_STATUS_CHANGED",
   "TASK_DELETED",
   "TASK_ATTACHMENT_UPDATED",
+  "RECURRENCE_CHANGED",
   "LIST_UPDATED",
+  "LIST_DELETED",
   "COLLABORATOR_CHANGED",
 ] as const;
 
@@ -37,7 +39,7 @@ export interface RealtimeEventEnvelope<T = unknown> {
  * Payload Schemas and Types
  */
 
-export interface TaskCreatedPayload extends TodoWithTags {}
+export type TaskCreatedPayload = TodoWithTags;
 
 export interface TaskUpdatedPayload {
   id: string;
@@ -60,6 +62,7 @@ export interface TaskStatusChangedPayload {
 
 export interface TaskDeletedPayload {
   id: string;
+  version?: number;
 }
 
 export interface TaskAttachmentUpdatedPayload {
@@ -68,9 +71,18 @@ export interface TaskAttachmentUpdatedPayload {
   version: number;
 }
 
+export interface RecurrenceChangedPayload {
+  ruleId: string;
+  action: "CREATED" | "UPDATED" | "PAUSED" | "RESUMED" | "ENDED";
+}
+
 export interface ListUpdatedPayload {
   id: string;
   name: string;
+}
+
+export interface ListDeletedPayload {
+  id: string;
 }
 
 export interface CollaboratorChangedPayload {

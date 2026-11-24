@@ -195,12 +195,15 @@ export class AttachmentService {
       );
     }
 
-    // Atomically transition status to ACTIVE and log activity
+    // Atomically transition status to ACTIVE, increment parent task version, and log activity
     const result = await withTransaction(this.db, async (tx) => {
       const activeAttachment = await this.repository.markActive(attachment.id, tx);
       if (!activeAttachment) {
         throw new NotFoundError(`Failed to activate attachment ${attachment.id}.`);
       }
+
+      // Atomically increment parent task version in same transaction
+      const updatedTask = await this.todoRepository.incrementVersion(attachment.todoId, tx);
 
       await this.activityService.logActivity(
         {
@@ -219,26 +222,29 @@ export class AttachmentService {
         tx
       );
 
-      return activeAttachment;
+      return {
+        activeAttachment,
+        taskVersion: updatedTask?.version ?? 1,
+      };
     });
 
-    // Broadcast attachment count update post-commit
+    // Broadcast attachment count update post-commit with actual task version
     try {
-      const countsMap = await this.repository.getAttachmentCountsForTodos([result.todoId]);
-      const count = countsMap.get(result.todoId) || 0;
+      const countsMap = await this.repository.getAttachmentCountsForTodos([result.activeAttachment.todoId]);
+      const count = countsMap.get(result.activeAttachment.todoId) || 0;
       await this.realtimePublisher.publishTaskAttachmentUpdated(
-        result.listId,
+        result.activeAttachment.listId,
         userId,
         null,
-        result.todoId,
+        result.activeAttachment.todoId,
         count,
-        1
+        result.taskVersion
       );
     } catch {
       // Handled silently
     }
 
-    return result;
+    return result.activeAttachment;
   }
 
   /**
@@ -303,11 +309,18 @@ export class AttachmentService {
 
     await this.permissionService.requireCanMutateTodos(userId, attachment.listId);
 
-    // Phase 1: Mark PENDING_DELETION and log activity in atomic transaction
+    // Phase 1: Mark PENDING_DELETION, increment parent task version, and log activity in atomic transaction
+    let taskVersionAfterDelete = 1;
     await withTransaction(this.db, async (tx) => {
       const marked = await this.repository.markPendingDeletion(attachment.id, tx);
       if (!marked) {
         throw new NotFoundError(`Attachment with ID ${attachment.id} was not found.`);
+      }
+
+      // Atomically increment parent task version in same transaction
+      const updatedTask = await this.todoRepository.incrementVersion(attachment.todoId, tx);
+      if (updatedTask) {
+        taskVersionAfterDelete = updatedTask.version;
       }
 
       await this.activityService.logActivity(
@@ -335,7 +348,7 @@ export class AttachmentService {
     }
     // If storage deletion temporarily fails, row remains PENDING_DELETION for background retry
 
-    // Broadcast attachment count update post-deletion
+    // Broadcast attachment count update post-deletion with actual task version
     try {
       const countsMap = await this.repository.getAttachmentCountsForTodos([attachment.todoId]);
       const count = countsMap.get(attachment.todoId) || 0;
@@ -345,7 +358,7 @@ export class AttachmentService {
         null,
         attachment.todoId,
         count,
-        1
+        taskVersionAfterDelete
       );
     } catch {
       // Handled silently

@@ -21,6 +21,10 @@ import {
 } from "@/server/services/activity.service";
 import { withTransaction } from "@/server/utils/transaction";
 import { db as defaultDb, type Database, type DbExecutor } from "@/db";
+import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
 import { type RecurrenceRule } from "@/db/schema/recurrence";
 import { type Todo } from "@/db/schema/todos";
 import { calculateNextOccurrence } from "@/lib/recurrence-engine";
@@ -38,6 +42,7 @@ export class RecurrenceService {
   private readonly tagRepo: ITagRepository;
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
+  private readonly realtimePublisher: IRealtimePublisherService;
   private readonly db: Database;
 
   constructor(
@@ -46,7 +51,8 @@ export class RecurrenceService {
     tagRepo: ITagRepository = defaultTagRepo,
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
-    database: Database = defaultDb
+    database: Database = defaultDb,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.recurrenceRepo = recurrenceRepo;
     this.todoRepo = todoRepo;
@@ -54,6 +60,7 @@ export class RecurrenceService {
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.db = database;
+    this.realtimePublisher = realtimePublisher;
   }
 
   /**
@@ -108,7 +115,7 @@ export class RecurrenceService {
     const anchorDay = input.anchorDayOfMonth ?? startDay;
     const anchorMonth = input.anchorMonthOfYear ?? startMonth;
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       // Calculate next due date for occurrence #2
       const nextDueDate = calculateNextOccurrence(
         {
@@ -202,6 +209,27 @@ export class RecurrenceService {
         },
       };
     });
+
+    // Broadcast TASK_CREATED and RECURRENCE_CHANGED post-commit
+    try {
+      await this.realtimePublisher.publishTaskCreated(
+        input.listId,
+        userId,
+        null,
+        result.initialTodo
+      );
+      await this.realtimePublisher.publishRecurrenceChanged(
+        input.listId,
+        userId,
+        null,
+        result.rule.id,
+        "CREATED"
+      );
+    } catch {
+      // Handled silently inside publisher
+    }
+
+    return result;
   }
 
   /**
@@ -228,7 +256,7 @@ export class RecurrenceService {
       }
     }
 
-    return withTransaction(this.db, async (tx) => {
+    const result = await withTransaction(this.db, async (tx) => {
       const updatedFreq = input.frequency ?? existing.frequency;
       const updatedInterval = input.interval ?? existing.interval;
       const updatedDaysOfWeek =
@@ -311,6 +339,21 @@ export class RecurrenceService {
 
       return updated;
     });
+
+    // Broadcast RECURRENCE_CHANGED post-commit
+    try {
+      await this.realtimePublisher.publishRecurrenceChanged(
+        existing.listId,
+        userId,
+        null,
+        result.id,
+        "UPDATED"
+      );
+    } catch {
+      // Handled silently
+    }
+
+    return result;
   }
 
   /**
@@ -347,6 +390,19 @@ export class RecurrenceService {
         title: rule.baseTitle,
       },
     });
+
+    // Broadcast RECURRENCE_CHANGED post-commit
+    try {
+      await this.realtimePublisher.publishRecurrenceChanged(
+        rule.listId,
+        userId,
+        null,
+        rule.id,
+        "PAUSED"
+      );
+    } catch {
+      // Handled silently
+    }
 
     return updated;
   }
@@ -385,6 +441,19 @@ export class RecurrenceService {
         title: rule.baseTitle,
       },
     });
+
+    // Broadcast RECURRENCE_CHANGED post-commit
+    try {
+      await this.realtimePublisher.publishRecurrenceChanged(
+        rule.listId,
+        userId,
+        null,
+        rule.id,
+        "RESUMED"
+      );
+    } catch {
+      // Handled silently
+    }
 
     return updated;
   }
@@ -425,6 +494,19 @@ export class RecurrenceService {
       },
     });
 
+    // Broadcast RECURRENCE_CHANGED post-commit
+    try {
+      await this.realtimePublisher.publishRecurrenceChanged(
+        rule.listId,
+        userId,
+        null,
+        rule.id,
+        "ENDED"
+      );
+    } catch {
+      // Handled silently
+    }
+
     return updated;
   }
 
@@ -442,6 +524,31 @@ export class RecurrenceService {
     const updated = await this.todoRepo.detachRecurrence(todoId);
     if (!updated) {
       throw new NotFoundError(`Todo with ID ${todoId} was not found.`);
+    }
+
+    // Broadcast TASK_UPDATED post-commit with the incremented version
+    try {
+      const full = await this.todoRepo.findById(todoId);
+      if (full) {
+        await this.realtimePublisher.publishTaskUpdated(
+          listId,
+          userId,
+          null,
+          {
+            id: full.id,
+            title: full.title,
+            description: full.description,
+            priority: full.priority,
+            dueDate: full.dueDate,
+            tags: full.tags,
+            attachmentCount: full.attachmentCount,
+            version: full.version,
+            updatedAt: full.updatedAt.toISOString(),
+          }
+        );
+      }
+    } catch {
+      // Handled silently inside publisher
     }
 
     return updated;
@@ -651,10 +758,10 @@ export class RecurrenceService {
         continue;
       }
 
-      await withTransaction(this.db, async (tx) => {
+      const createdItem = await withTransaction(this.db, async (tx) => {
         const lockedRule = await this.recurrenceRepo.findByIdForUpdate(rule.id, tx);
         if (!lockedRule || lockedRule.status !== "ACTIVE" || !lockedRule.nextDueDate) {
-          return;
+          return null;
         }
 
         const nextOccurrenceNumber = lockedRule.lastGeneratedOccurrenceNumber + 1;
@@ -732,8 +839,26 @@ export class RecurrenceService {
           tx
         );
 
-        generatedCount++;
+        return { nextTodo, listId: lockedRule.listId };
       });
+
+      if (createdItem) {
+        generatedCount++;
+        // Broadcast TASK_CREATED post-commit
+        try {
+          const full = await this.todoRepo.findById(createdItem.nextTodo.id);
+          if (full) {
+            await this.realtimePublisher.publishTaskCreated(
+              createdItem.listId,
+              userId,
+              null,
+              full
+            );
+          }
+        } catch {
+          // Handled silently
+        }
+      }
     }
 
     return { generatedCount };
@@ -756,10 +881,10 @@ export class RecurrenceService {
         continue;
       }
 
-      await withTransaction(this.db, async (tx) => {
+      const createdItem = await withTransaction(this.db, async (tx) => {
         const lockedRule = await this.recurrenceRepo.findByIdForUpdate(rule.id, tx);
         if (!lockedRule || lockedRule.status !== "ACTIVE" || !lockedRule.nextDueDate) {
-          return;
+          return null;
         }
 
         const nextOccurrenceNumber = lockedRule.lastGeneratedOccurrenceNumber + 1;
@@ -837,8 +962,26 @@ export class RecurrenceService {
           tx
         );
 
-        processed++;
+        return { nextTodo, listId: lockedRule.listId };
       });
+
+      if (createdItem) {
+        processed++;
+        // Broadcast TASK_CREATED post-commit for cron generated occurrences
+        try {
+          const full = await this.todoRepo.findById(createdItem.nextTodo.id);
+          if (full) {
+            await this.realtimePublisher.publishTaskCreated(
+              createdItem.listId,
+              "SYSTEM",
+              null,
+              full
+            );
+          }
+        } catch {
+          // Handled silently
+        }
+      }
     }
 
     return { processed };

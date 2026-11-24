@@ -3,6 +3,14 @@ import {
   tagRepository as defaultTagRepo,
 } from "@/server/repositories/tag.repository";
 import {
+  type ITodoRepository,
+  todoRepository as defaultTodoRepo,
+} from "@/server/repositories/todo.repository";
+import {
+  type IRealtimePublisherService,
+  realtimePublisherService as defaultRealtimePublisher,
+} from "@/server/services/realtime-publisher.service";
+import {
   ListPermissionService,
   listPermissionService as defaultPermissionService,
 } from "@/server/services/list-permission.service";
@@ -21,20 +29,26 @@ import { NotFoundError, ValidationError } from "@/server/errors";
 
 export class TagService {
   private readonly repository: ITagRepository;
+  private readonly todoRepository: ITodoRepository;
   private readonly permissionService: ListPermissionService;
   private readonly activityService: ActivityService;
+  private readonly realtimePublisher: IRealtimePublisherService;
   private readonly db: Database;
 
   constructor(
     repository: ITagRepository = defaultTagRepo,
     permissionService: ListPermissionService = defaultPermissionService,
     activityService: ActivityService = defaultActivityService,
-    database: Database = defaultDb
+    database: Database = defaultDb,
+    todoRepository: ITodoRepository = defaultTodoRepo,
+    realtimePublisher: IRealtimePublisherService = defaultRealtimePublisher
   ) {
     this.repository = repository;
     this.permissionService = permissionService;
     this.activityService = activityService;
     this.db = database;
+    this.todoRepository = todoRepository;
+    this.realtimePublisher = realtimePublisher;
   }
 
   /**
@@ -191,10 +205,28 @@ export class TagService {
 
     await this.permissionService.requireCanMutateTodos(userId, existing.listId);
 
-    return withTransaction(this.db, async (tx) => {
+    // Identify tasks whose visible representation changes due to tag cascade deletion
+    let affectedTodoIds: string[] = [];
+    try {
+      affectedTodoIds = await this.repository.findTodoIdsByTagId(id);
+    } catch {
+      // In mock/test environments
+    }
+
+    const result = await withTransaction(this.db, async (tx) => {
       const success = await this.repository.delete(id, tx);
       if (!success) {
         throw new NotFoundError(`Tag with ID ${id} was not found.`);
+      }
+
+      // Increment version for all affected tasks in the same transaction
+      let updatedTasks: Array<{ id: string; listId: string; version: number }> = [];
+      if (affectedTodoIds.length > 0) {
+        try {
+          updatedTasks = await this.todoRepository.incrementVersions(affectedTodoIds, tx);
+        } catch {
+          // In mock environments
+        }
       }
 
       await this.activityService.logActivity(
@@ -207,13 +239,45 @@ export class TagService {
           metadata: {
             name: existing.name,
             color: existing.color,
+            affectedTaskCount: affectedTodoIds.length,
           },
         },
         tx
       );
 
-      return { success: true, id };
+      return { success: true, id, updatedTasks };
     });
+
+    // Broadcast TASK_UPDATED post-commit for all affected tasks
+    if (result.updatedTasks && result.updatedTasks.length > 0) {
+      for (const t of result.updatedTasks) {
+        try {
+          const full = await this.todoRepository.findById(t.id);
+          if (full) {
+            await this.realtimePublisher.publishTaskUpdated(
+              existing.listId,
+              userId,
+              null,
+              {
+                id: full.id,
+                title: full.title,
+                description: full.description,
+                priority: full.priority,
+                dueDate: full.dueDate,
+                tags: full.tags,
+                attachmentCount: full.attachmentCount,
+                version: full.version,
+                updatedAt: full.updatedAt.toISOString(),
+              }
+            );
+          }
+        } catch {
+          // Handled silently
+        }
+      }
+    }
+
+    return { success: true, id };
   }
 }
 

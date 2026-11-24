@@ -19,6 +19,7 @@ export interface ITagRepository {
   delete(id: string, tx?: DbExecutor): Promise<boolean>;
 
   // Task-Tag associations
+  findTodoIdsByTagId(tagId: string, tx?: DbExecutor): Promise<string[]>;
   findTagsForTodo(todoId: string): Promise<Tag[]>;
   findTagsForTodos(todoIds: string[]): Promise<Map<string, Tag[]>>;
   assignTagsToTodo(todoId: string, tagIds: string[], tx?: DbExecutor): Promise<void>;
@@ -111,6 +112,15 @@ export class TagRepository implements ITagRepository {
     const executor = tx || this.db;
     const deleted = await executor.delete(tags).where(eq(tags.id, id)).returning();
     return deleted.length > 0;
+  }
+
+  async findTodoIdsByTagId(tagId: string, tx?: DbExecutor): Promise<string[]> {
+    const executor = tx || this.db;
+    const rows = await executor
+      .select({ todoId: todoTags.todoId })
+      .from(todoTags)
+      .where(eq(todoTags.tagId, tagId));
+    return rows.map((r) => r.todoId);
   }
 
   async findTagsForTodo(todoId: string): Promise<Tag[]> {

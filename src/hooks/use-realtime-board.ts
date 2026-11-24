@@ -23,7 +23,31 @@ import { type AppRouter } from "@/server/api/root";
 type RouterOutput = inferRouterOutputs<AppRouter>;
 export type TodoListItem = RouterOutput["todo"]["list"][number];
 
-function toClientTodoItem(t: any): TodoListItem {
+interface RawTodoItemInput {
+  id: string;
+  listId: string;
+  title: string;
+  description?: string | null;
+  status: TodoListItem["status"];
+  priority: TodoListItem["priority"];
+  dueDate?: string | null;
+  recurrenceRuleId?: string | null;
+  occurrenceNumber?: number | null;
+  version?: number;
+  attachmentCount?: number;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  tags?: Array<{
+    id: string;
+    listId: string;
+    name: string;
+    color: string;
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+  }>;
+}
+
+function toClientTodoItem(t: RawTodoItemInput): TodoListItem {
   return {
     id: t.id,
     listId: t.listId,
@@ -48,7 +72,7 @@ function toClientTodoItem(t: any): TodoListItem {
         : t.updatedAt
         ? new Date(t.updatedAt).toISOString()
         : new Date().toISOString(),
-    tags: (t.tags || []).map((tag: any) => ({
+    tags: (t.tags || []).map((tag) => ({
       id: tag.id,
       listId: tag.listId,
       name: tag.name,
@@ -272,9 +296,16 @@ export function useRealtimeBoard({
               if (!existing) return existing;
               return existing.map((t) => {
                 if (t.id !== payload.todoId) return t;
+
+                // Monotonic version check
+                if (t.version !== undefined && payload.version <= t.version) {
+                  return t;
+                }
+
                 return {
                   ...t,
                   attachmentCount: payload.attachmentCount,
+                  version: payload.version,
                 };
               });
             }
@@ -288,15 +319,45 @@ export function useRealtimeBoard({
             { listId, ...filters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return existing;
-              return existing.filter((t) => t.id !== payload.id);
+              return existing.filter((t) => {
+                if (t.id !== payload.id) return true;
+
+                // Monotonic version check: drop stale deletion if client already has a newer version
+                if (
+                  envelope.version !== undefined &&
+                  t.version !== undefined &&
+                  envelope.version < t.version
+                ) {
+                  return true;
+                }
+
+                return false;
+              });
             }
           );
           utils.todoList.list.invalidate();
           break;
         }
 
+        case "RECURRENCE_CHANGED": {
+          utils.todoList.list.invalidate();
+          utils.todo.list.invalidate({ listId });
+          break;
+        }
+
         case "LIST_UPDATED": {
           // Authoritative list refresh
+          utils.todoList.list.invalidate();
+          break;
+        }
+
+        case "LIST_DELETED": {
+          // Clean up local cache and indicate unavailable
+          subscriptionRef.current?.unsubscribe();
+          subscriptionRef.current = null;
+          setStatus("UNAVAILABLE");
+          setRawPresences([]);
+          utils.todo.list.setData({ listId, ...filters }, () => []);
           utils.todoList.list.invalidate();
           break;
         }

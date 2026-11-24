@@ -103,7 +103,8 @@ describe("RealtimePublisherService", () => {
       sampleListId,
       sampleActorId,
       "tab-xyz",
-      sampleTodoId
+      sampleTodoId,
+      3
     );
 
     expect(success).toBe(true);
@@ -113,6 +114,7 @@ describe("RealtimePublisherService", () => {
         payload: expect.objectContaining({
           entityId: sampleTodoId,
           clientSessionId: "tab-xyz",
+          version: 3,
         }),
       })
     );
@@ -125,7 +127,8 @@ describe("RealtimePublisherService", () => {
       sampleListId,
       sampleActorId,
       null,
-      sampleTodoId
+      sampleTodoId,
+      1
     );
 
     expect(success).toBe(false);

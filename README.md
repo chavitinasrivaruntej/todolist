@@ -251,6 +251,8 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - `0008_recurring_tasks_and_schedules.sql`: Recurrence schedule templates, recurrence enums, series tracking counters, and unique occurrence constraints.
 - `0009_task_file_attachments.sql`: Task file attachments table (`todo_attachments`), composite foreign key on `(todo_id, list_id)`, attachment status lifecycle enum, storage path constraints, and sweeper indexes.
 - `0010_task_versioning.sql`: Monotonic integer `version` column on `todos` table with default 1 and not-null constraint for race-free optimistic concurrency control.
+- `0011_realtime_authorization.sql`: Private channel RLS policies on `realtime.messages`, SECURITY DEFINER authorization function `authorize_realtime_list_access`, and client broadcast write restriction.
+- `0012_realtime_permission_hardening.sql`: Security hardening revoking `EXECUTE` privileges on `authorize_realtime_list_access` from `PUBLIC` and `anon`, granting execution exclusively to `authenticated` and `service_role`.
 
 ---
 
@@ -266,6 +268,43 @@ The database schema is defined declaratively using Drizzle ORM and migrated to P
 - **Multi-Tenant Isolation**: Verified in automated integration tests. User A can never access, query, or mutate User B's lists or tasks.
 - **Invitation Security**: Invitation tokens are 32-byte cryptographically secure random hexadecimal strings with an automatic 7-day expiration window.
 - **OAuth Open-Redirect Guard**: Authentication callbacks validate the `next` redirect target to prevent open redirect vulnerabilities to external malicious origins.
+
+---
+
+## 7.1 Realtime Architecture, Task Versioning & Event Lifecycle
+
+### 1. Task Versioning Semantics
+- **Monotonic Integer Counter**: Each task has an integer `version` column on `todos`, defaulting to `1` upon creation.
+- **Atomic Transactional Increments**: Every mutation that modifies the task or its associated entities (status movement, title/description updates, priority/due date changes, recurrence detaches, attachment additions, attachment deletions, and tag deletions) executes an atomic increment:
+  $$\text{version} = \text{todos.version} + 1$$
+- **Concurrency & Row Locking**: Increments occur inside PostgreSQL transactions (`withTransaction`). Row-level write locks acquired during the SQL update guarantee strict serializability; concurrent mutations execute sequentially, never yielding duplicate versions.
+- **Authoritative Deletion Versioning**: When a task is deleted, the repository uses `DELETE FROM todos WHERE id = $1 RETURNING id, list_id, version` to capture the true final persisted version before the row is purged, broadcasting `TASK_DELETED` with the actual final version rather than an arbitrary or hardcoded `0`.
+
+### 2. Event Publishing Lifecycle & Post-Commit Guarantees
+- **Decoupled Post-Commit Dispatch**: Database transactions are never coupled to network socket operations. All mutations commit to PostgreSQL first; event broadcasting via `realtimePublisherService` executes strictly *post-commit*.
+- **Rollback Invariance**: If a database transaction fails or is aborted, zero Realtime events are published, eliminating phantom updates and client cache drift.
+- **Non-Blocking Resilience**: Broadcast network failures are trapped and logged with structured context (`Realtime publisher broadcast failed`) without rolling back or failing the user's completed database mutation.
+
+### 3. Guidelines for Wiring New Mutations
+When introducing new task or list mutations, follow these strict architectural rules:
+1. **Wrap in Transaction**: Execute all database modifications within `withTransaction(async (tx) => ...)`.
+2. **Increment Parent Version**: If the mutation alters the parent task's visual representation or associated child records (e.g., tags, attachments, recurrence state), atomically increment the parent's `version` via `todoRepository.incrementVersion(todoId, tx)`.
+3. **Capture True Versions**: Capture the exact updated entity and its new version within the transaction block.
+4. **Publish Strictly Post-Commit**: Invoke `realtimePublisherService.publish*(...)` outside and after the transaction block.
+5. **Pass Client Session ID**: Always pass the caller's `clientSessionId` to the publisher so originating client tabs can distinguish their own actions from remote collaborator actions.
+
+### 4. Client Event Handling & Deduplication Model
+- **Private Channel Scoping**: Clients subscribe exclusively to private channels (`list:${listId}`) configured with `{ private: true }`. Public channel degradations are blocked.
+- **Monotonic Version Invariant**: The client-side hook (`use-realtime-board.ts`) drops incoming task events if:
+  $$\text{payload.version} \le \text{cachedTodo.version}$$
+  Task deletion events are dropped if $\text{envelope.version} < \text{cachedTodo.version}$. This guarantees that delayed, out-of-order, or duplicate WebSocket packets never overwrite newer client state.
+- **Multi-Tab Deduplication**: Each browser tab generates an ephemeral `clientSessionId` upon mounting. When an event arrives with `envelope.clientSessionId === localSessionId`, the originating tab ignores the broadcast to preserve its optimistic cache state, while other tabs of the same user update seamlessly.
+- **Cascading Invalidation**: List-level events (`LIST_DELETED`, `RECURRENCE_CHANGED`) trigger immediate query cache invalidations, state evictions, and channel teardown.
+
+### 5. Known Delivery Limitations & Recovery Strategies
+- **At-Most-Once WebSocket Delivery**: Supabase Realtime broadcast channels operate on best-effort WebSocket transport. Packets may be dropped during network handoffs or transient disconnections.
+- **Authoritative Cache Reconciliation**: TanStack Query remains the authoritative source of truth. Background window refocus (`visibilitychange`), network reconnection, and manual pull-to-refresh trigger automatic query invalidations (`queryClient.invalidateQueries`) to re-sync any missed state changes.
+- **Bounded Residual JWT Window**: Revoked collaborators retain access for at most the remaining duration of their short-lived Realtime JWT token (60 seconds) before Supabase Realtime closes their private channel subscription.
 
 ---
 

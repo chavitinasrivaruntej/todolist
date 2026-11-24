@@ -1,13 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   type RealtimeEventEnvelope,
-  type RealtimeEventType,
   type TaskCreatedPayload,
   type TaskUpdatedPayload,
   type TaskStatusChangedPayload,
   type TaskDeletedPayload,
   type TaskAttachmentUpdatedPayload,
+  type RecurrenceChangedPayload,
   type ListUpdatedPayload,
+  type ListDeletedPayload,
   type CollaboratorChangedPayload,
   getListRealtimeTopic,
 } from "@/lib/realtime/realtime-events";
@@ -40,7 +41,8 @@ export interface IRealtimePublisherService {
     listId: string,
     actorId: string,
     clientSessionId: string | null,
-    id: string
+    id: string,
+    version: number
   ): Promise<boolean>;
   publishTaskAttachmentUpdated(
     listId: string,
@@ -50,11 +52,23 @@ export interface IRealtimePublisherService {
     attachmentCount: number,
     version: number
   ): Promise<boolean>;
+  publishRecurrenceChanged(
+    listId: string,
+    actorId: string,
+    clientSessionId: string | null,
+    ruleId: string,
+    action: "CREATED" | "UPDATED" | "PAUSED" | "RESUMED" | "ENDED"
+  ): Promise<boolean>;
   publishListUpdated(
     listId: string,
     actorId: string,
     clientSessionId: string | null,
     name: string
+  ): Promise<boolean>;
+  publishListDeleted(
+    listId: string,
+    actorId: string,
+    clientSessionId: string | null
   ): Promise<boolean>;
   publishCollaboratorChanged(
     listId: string,
@@ -209,7 +223,8 @@ export class RealtimePublisherService implements IRealtimePublisherService {
     listId: string,
     actorId: string,
     clientSessionId: string | null,
-    id: string
+    id: string,
+    version: number
   ): Promise<boolean> {
     return this.broadcast<TaskDeletedPayload>({
       eventId: crypto.randomUUID(),
@@ -219,8 +234,8 @@ export class RealtimePublisherService implements IRealtimePublisherService {
       actorId,
       clientSessionId,
       occurredAt: new Date().toISOString(),
-      version: 0,
-      payload: { id },
+      version,
+      payload: { id, version },
     });
   }
 
@@ -249,6 +264,26 @@ export class RealtimePublisherService implements IRealtimePublisherService {
     });
   }
 
+  async publishRecurrenceChanged(
+    listId: string,
+    actorId: string,
+    clientSessionId: string | null,
+    ruleId: string,
+    action: "CREATED" | "UPDATED" | "PAUSED" | "RESUMED" | "ENDED"
+  ): Promise<boolean> {
+    return this.broadcast<RecurrenceChangedPayload>({
+      eventId: crypto.randomUUID(),
+      eventType: "RECURRENCE_CHANGED",
+      listId,
+      entityId: ruleId,
+      actorId,
+      clientSessionId,
+      occurredAt: new Date().toISOString(),
+      version: 1,
+      payload: { ruleId, action },
+    });
+  }
+
   async publishListUpdated(
     listId: string,
     actorId: string,
@@ -265,6 +300,24 @@ export class RealtimePublisherService implements IRealtimePublisherService {
       occurredAt: new Date().toISOString(),
       version: 1,
       payload: { id: listId, name },
+    });
+  }
+
+  async publishListDeleted(
+    listId: string,
+    actorId: string,
+    clientSessionId: string | null
+  ): Promise<boolean> {
+    return this.broadcast<ListDeletedPayload>({
+      eventId: crypto.randomUUID(),
+      eventType: "LIST_DELETED",
+      listId,
+      entityId: listId,
+      actorId,
+      clientSessionId,
+      occurredAt: new Date().toISOString(),
+      version: 1,
+      payload: { id: listId },
     });
   }
 

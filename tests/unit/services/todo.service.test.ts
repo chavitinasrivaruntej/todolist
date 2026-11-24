@@ -44,6 +44,8 @@ describe("TodoService", () => {
       findByRecurrenceRuleAndOccurrence: vi.fn().mockResolvedValue(null),
       findActiveOccurrenceByRuleId: vi.fn().mockResolvedValue(null),
       detachRecurrence: vi.fn().mockResolvedValue(sampleTodo),
+      incrementVersion: vi.fn().mockResolvedValue({ id: sampleTodo.id, listId: sampleListId, version: 2 }),
+      incrementVersions: vi.fn().mockResolvedValue([]),
     };
 
     mockPermissionService = {
@@ -307,7 +309,11 @@ describe("TodoService", () => {
 
   describe("deleteTodo", () => {
     it("should delete existing todo when user has mutate permission", async () => {
-      vi.mocked(mockRepository.delete).mockResolvedValue(true);
+      vi.mocked(mockRepository.delete).mockResolvedValue({
+        id: sampleTodo.id,
+        listId: sampleListId,
+        version: 1,
+      });
 
       const result = await service.deleteTodo({ id: sampleTodo.id }, testUserId);
 
