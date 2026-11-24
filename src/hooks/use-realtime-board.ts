@@ -104,6 +104,7 @@ export function useRealtimeBoard({
   const [status, setStatus] = useState<RealtimeConnectionStatus>("IDLE");
   const [rawPresences, setRawPresences] = useState<CollaboratorPresenceState[]>([]);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const subscriptionRef = useRef<ReturnType<typeof subscribeToListChannel> | null>(null);
 
   // Generate or retrieve persistent-per-tab session ID
   const [tabSessionId] = useState<string>(() => {
@@ -302,14 +303,18 @@ export function useRealtimeBoard({
 
         case "COLLABORATOR_CHANGED": {
           const payload = envelope.payload as CollaboratorChangedPayload;
-          // If current user had their membership revoked, immediately invalidate
+          // If current user had their membership revoked, immediately tear down subscription and clear protected data
           if (
             payload.action === "REMOVED" &&
             currentUser &&
             payload.targetUserId === currentUser.id
           ) {
+            subscriptionRef.current?.unsubscribe();
+            subscriptionRef.current = null;
+            setStatus("UNAVAILABLE");
+            setRawPresences([]);
+            utils.todo.list.setData({ listId, ...filters }, () => []);
             utils.todoList.list.invalidate();
-            utils.todo.list.invalidate({ listId });
           } else {
             utils.sharing.getMembersAndInvites.invalidate({ listId });
           }
@@ -382,6 +387,7 @@ export function useRealtimeBoard({
         setStatus(newStatus);
       },
     });
+    subscriptionRef.current = subscription;
 
     // Reconnection and tab-resumption listener: Authoritative resync
     const handleVisibilityChange = () => {
@@ -396,6 +402,7 @@ export function useRealtimeBoard({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       subscription.unsubscribe();
+      subscriptionRef.current = null;
     };
   }, [
     listId,
