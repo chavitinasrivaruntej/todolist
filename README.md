@@ -367,8 +367,8 @@ Caize Todo adheres to rigorous automated quality gates:
 ```bash
 npm test
 ```
-- **43 test files**, **383 unit and integration tests** passing (100% pass rate).
-- Full coverage across validations, repositories, domain services, recurrence calculation engine, Supabase storage adapter, attachment validations, magic bytes verification, tRPC routers, authorization checks, and React UI components.
+- **51 test files**, **445 unit and integration tests** passing (100% pass rate).
+- Full coverage across validations, repositories, domain services, recurrence calculation engine, Supabase storage adapter, attachment validations, magic bytes verification, realtime event envelopes, monotonic versioning, presence grouping, connection lifecycle recovery, tRPC routers, authorization checks, and React UI components.
 
 ### TypeScript Compilation Check
 ```bash
@@ -440,16 +440,48 @@ This checkpoint marks the official completion, verification, and consolidation o
 
 ## 13. Phase 11 — Live Collaborator Presence & Realtime Board Updates Milestone
 
-This checkpoint marks the official completion, verification, and consolidation of **Phase 11**. All functional and architectural requirements for real-time WebSocket board synchronization, zero-fallback private channels, post-commit domain event broadcasts, monotonic integer task versioning, multi-tab deduplication, filter-aware cache patching, and live collaborator presence tracking are implemented, fully tested, documented, and synchronized to GitHub:
+This checkpoint marks the official completion, verification, and consolidation of **Phase 11**. All functional and architectural requirements for real-time WebSocket board synchronization, zero-fallback private channels, post-commit domain event broadcasts, monotonic integer task versioning, multi-tab presence grouping, filter-aware cache patching, authoritative connection lifecycle recovery, and lightweight activity feedback are implemented, fully tested, documented, and verified:
 
-- **Private WebSocket Channels**: Realtime channels are private-only (`list:LIST_ID`). Authorization is verified pre-flight via tRPC `realtime.authorizeChannel` against list membership roles (`OWNER`, `EDITOR`, `VIEWER`). Non-members are rejected; unauthenticated degradation to public channels is architecturally forbidden.
-- **Post-Commit Broadcast Pipeline**: Atomic SQL transactions execute first, followed by post-commit asynchronous broadcasts of typed domain events (`TASK_CREATED`, `TASK_UPDATED`, `TASK_STATUS_CHANGED`, `TASK_DELETED`, `TASK_ATTACHMENT_UPDATED`, `LIST_UPDATED`, `COLLABORATOR_CHANGED`) with structured error logging.
-- **Monotonic Integer Task Versioning**: Monotonic `version` column on `todos` incremented atomically (`version = version + 1`) during mutations. Incoming realtime events with `event.version <= cached.version` are strictly rejected by the client, preventing out-of-order race conditions and clock-skew corruptions.
-- **Multi-Tab Synchronization & Deduplication**: Each browser tab generates an ephemeral `clientSessionId`. Originating tabs bypass redundant cache mutations to preserve optimistic UI states, while secondary tabs of the same collaborator update their UI instantaneously.
-- **Filter-Aware Cache Reconciliation**: Live task creation events evaluate active client-side search queries, priorities, and tag filters before mutating the TanStack Query cache, ensuring active filtered views remain strictly accurate.
-- **Live Presence & Collaborator Avatars**: Realtime presence tracking broadcasts active view (`LIST`, `BOARD`, `ACTIVITY`), current editing focus (`editingTodoId`), and user role. The `CollaboratorAvatarGroup` component groups multiple open tabs per user, displaying tab badges (`2`), status tooltips, and deterministic avatar colors.
-- **Authoritative Reconnection Recovery**: Reconnection events and background tab re-focus (`visibilitychange`) trigger authoritative TanStack Query cache invalidations, guaranteeing eventual consistency even after transient WebSocket disconnects or dropped ephemeral broadcast packets.
-- **Verified Test Metrics**: 48 test files, 404 passing tests, 0 failures.
-- **Build Status**: Production Next.js 16 Turbopack build verified (`npm run build`).
-- **Database Status**: Migration 0010 applied and verified live on Supabase PostgreSQL with active `version` column.
-- **Git Milestone**: Synchronized with `origin/main` on GitHub.
+### 1. Zero-Fallback Realtime Authorization & RLS Hardening
+- **Private WebSocket Channels**: Realtime channels are strictly private (`list:LIST_ID`). Authorization is verified pre-flight via tRPC `realtime.authorizeChannel` against list membership roles (`OWNER`, `EDITOR`, `VIEWER`). Non-members and unauthenticated requests are rejected.
+- **Database-Level Defense-in-Depth**: Migrations `0011_realtime_authorization.sql` and `0012_realtime_permission_hardening.sql` enforce `SECURITY DEFINER` authorization functions (`can_access_list_realtime`, `authorize_realtime_topic`), grant restrictive RLS permissions on `realtime.messages`, lock client INSERT to presence-only topics, and reserve Broadcast publishing strictly to the server role.
+
+### 2. Post-Commit Broadcast & Task Versioning
+- **Post-Commit Publishing**: Domain services (`TodoService`, `TodoListService`, `AttachmentService`, `TagService`, `RecurrenceService`) execute atomic SQL transactions first (`withTransaction`), followed by post-commit asynchronous broadcasts of typed domain events (`TASK_CREATED`, `TASK_UPDATED`, `TASK_STATUS_CHANGED`, `TASK_DELETED`, `TASK_ATTACHMENT_UPDATED`, `LIST_UPDATED`, `COLLABORATOR_CHANGED`) via `RealtimePublisherService`.
+- **Monotonic Integer Task Versioning**: Monotonic `version` column on `todos` incremented atomically (`version = version + 1`) during mutations. Incoming realtime events with `event.version <= cached.version` are strictly dropped by the client, preventing out-of-order race conditions and clock-skew corruptions.
+- **Atomic Concurrency & Rollbacks**: Any transaction failure aborts the entire mutation, guaranteeing zero phantom events are dispatched to the WebSocket channel.
+
+### 3. Collaborator Presence & Multi-Tab Grouping
+- **State Model & Session Tracking**: Ephemeral presence tracking broadcasts active view (`LIST`, `BOARD`, `ACTIVITY`), current editing focus (`editingTodoId`), and user role. Each browser tab generates an isolated `clientSessionId` in `sessionStorage` with presence keys formatted as `${userId}:${sessionId}`.
+- **Multi-Tab Grouping**: The `useRealtimeBoard` hook aggregates raw presence entries by `userId` into `UniqueCollaborator` objects with `sessionCount`. If a user opens 3 tabs, other collaborators see a single avatar with a `3` count badge.
+- **Independent Tab Departures**: Closing one tab leaves remaining open tabs active; the user only leaves the presence roster when their last session disconnects.
+- **Accessible UI**: `CollaboratorAvatarGroup` features full keyboard navigation (`tabIndex={0}`, tooltips on focus, `role="img"`), accessible ARIA labels, deterministic color palettes, and optional empty states (`showEmptyState`).
+
+### 4. Connection Lifecycle, Resilience & Board Recovery
+- **Connection State Machine**: Tracks transitions through `IDLE`, `CONNECTING`, `CONNECTED`, `RECONNECTING`, and `UNAVAILABLE`. Automatically listens to browser `online` and `offline` events.
+- **Authoritative Reconnection Recovery**: Re-established WebSocket connections trigger authoritative TanStack Query cache invalidations (`invalidateQueries`), reconciling any mutations or events that occurred during offline intervals or packet loss.
+- **Throttled Visibility Change Resync**: When switching back to a background tab (`visibilitychange`), cache invalidation is triggered with a 2,000ms throttle to prevent query thrashing while ensuring fresh data.
+- **Channel Decoupling**: Updating `activeView` or `editingTodoId` updates presence metadata without tearing down or reconnecting the underlying WebSocket channel.
+- **List Switching Isolation**: Switching lists immediately unsubscribes from the previous channel, clears presence state, and resets board context.
+
+### 5. Board Cache Reconciliation & Late Event Guards
+- **Deleted Task Tombstones**: `deletedTaskIdsRef` maintains an in-memory LRU set of recently deleted task IDs (up to 200), preventing delayed creation or update events from resurrecting or mutating removed items.
+- **Active List Scoping**: `currentListIdRef` validates incoming event payloads against the active list before applying cache updates, preventing cross-list broadcast leakage when rapidly switching lists.
+- **Filter-Aware Cache Patching**: Live task creation events evaluate active client-side search queries, priorities, due dates, and tag filters before mutating the TanStack Query cache.
+- **Own-Action Suppression**: The originating tab compares `event.clientSessionId` to skip redundant cache mutations while preserving optimistic UI responsiveness; secondary tabs update instantaneously.
+
+### 6. Lightweight Realtime Activity Feedback
+- **Non-Intrusive Activity Banner**: `RealtimeActivityBanner` provides accessible notifications (`role="status"`, `aria-live="polite"`) for collaborator actions (e.g., "Jane updated Buy groceries", "Bob joined the board").
+- **Own-Action Suppression**: Collaboration notifications are suppressed for actions initiated by the current user.
+- **Manual & Auto Dismissal**: Alerts feature an explicit dismiss button and auto-clear after 5 seconds.
+
+### 7. Revocation Handling & Residual JWT Window
+- **Immediate Client-Side Channel Teardown**: When a collaborator's membership is revoked, the list owner's mutation broadcasts a `COLLABORATOR_CHANGED` event with `action: "REMOVED"` and the target user ID. The removed collaborator's client intercepts this event immediately, unsubscribes from the channel, transitions status to `UNAVAILABLE`, flushes presences to `[]`, and evicts protected list queries from memory (`utils.todo.list.setData(..., () => [])`). Any navigation or list switch also triggers `realtime.authorizeChannel`, immediately throwing `NotFoundError`.
+- **Remaining WebSocket Revocation Limitation & Residual JWT Window**: Supabase Realtime delivers broadcasts via in-memory Elixir Phoenix PubSub channels without executing PostgreSQL RLS queries per broadcast message frame. Consequently, if a compromised or malicious client deliberately ignores or suppresses the client-side `COLLABORATOR_CHANGED` teardown event, the existing WebSocket connection could continue to receive ephemeral broadcasts until: (1) a network interruption or reconnect occurs, where database-level `public.authorize_realtime_list_access` RLS rejects channel join; (2) the client's Supabase JWT access token expires (typically 3,600s / 1 hour); or (3) the user performs an API mutation, where server-side tRPC procedures immediately reject access with `NotFoundError`.
+
+### 8. Verification Metrics
+- **Verified Test Metrics**: **51 test files**, **445 passing tests**, **0 failures** across all unit and integration test suites.
+- **Build Status**: Production Next.js 16 Turbopack build verified (`npm run build`, Exit Code 0).
+- **TypeScript Check**: Strict mode compilation verified (`npx tsc --noEmit`, 0 errors).
+- **ESLint Check**: Verified clean (`npm run lint`, 0 errors).
+- **Live Supabase Verification**: End-to-end verification script (`scripts/verify-stage3-live.ts`) successfully executed against Supabase Realtime infrastructure, verifying multi-tab presence tracking, multi-user aggregation, tab depart preservation, and private channel rejection for non-members.

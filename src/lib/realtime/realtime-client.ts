@@ -18,7 +18,10 @@ export interface CreateChannelOptions {
   initialPresence?: CollaboratorPresenceState;
   onEvent: (event: RealtimeEventEnvelope) => void;
   onPresenceSync: (presences: CollaboratorPresenceState[]) => void;
+  onPresenceJoin?: (presences: CollaboratorPresenceState[]) => void;
+  onPresenceLeave?: (presences: CollaboratorPresenceState[]) => void;
   onStatusChange: (status: RealtimeConnectionStatus) => void;
+  onReconnected?: () => void;
 }
 
 /**
@@ -45,6 +48,7 @@ export function subscribeToListChannel(options: CreateChannelOptions): {
   options.onStatusChange("CONNECTING");
 
   let currentPresence = options.initialPresence;
+  let hasConnectedOnce = false;
 
   const channel = supabase.channel(topic, {
     config: {
@@ -76,16 +80,49 @@ export function subscribeToListChannel(options: CreateChannelOptions): {
     options.onPresenceSync(allPresences);
   });
 
+  channel.on("presence", { event: "join" }, ({ newPresences }) => {
+    if (options.onPresenceJoin && Array.isArray(newPresences)) {
+      options.onPresenceJoin(newPresences as unknown as CollaboratorPresenceState[]);
+    }
+  });
+
+  channel.on("presence", { event: "leave" }, ({ leftPresences }) => {
+    if (options.onPresenceLeave && Array.isArray(leftPresences)) {
+      options.onPresenceLeave(leftPresences as unknown as CollaboratorPresenceState[]);
+    }
+  });
+
+  // Handle window network events
+  const handleOnline = () => {
+    options.onStatusChange("CONNECTING");
+  };
+
+  const handleOffline = () => {
+    options.onStatusChange("DISCONNECTED");
+  };
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+  }
+
   // Subscribe to channel
   channel.subscribe(async (status) => {
     if (status === "SUBSCRIBED") {
+      const isReconnection = hasConnectedOnce;
+      hasConnectedOnce = true;
       options.onStatusChange("CONNECTED");
+
       if (currentPresence) {
         try {
           await channel.track(currentPresence);
         } catch {
           // Track failure is handled by presence sync
         }
+      }
+
+      if (isReconnection && options.onReconnected) {
+        options.onReconnected();
       }
     } else if (status === "CLOSED") {
       options.onStatusChange("DISCONNECTED");
@@ -109,6 +146,10 @@ export function subscribeToListChannel(options: CreateChannelOptions): {
       }
     },
     unsubscribe: () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      }
       try {
         channel.untrack();
         channel.unsubscribe();

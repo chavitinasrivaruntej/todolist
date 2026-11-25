@@ -59,4 +59,26 @@ describe("CollaboratorAvatarGroup Component", () => {
     // First 4 visible, remaining 2 indicated by "+2"
     expect(screen.getByText("+2")).toBeDefined();
   });
+
+  it("should render accessible empty state when showEmptyState is true and collaborators array is empty", () => {
+    render(<CollaboratorAvatarGroup collaborators={[]} showEmptyState={true} />);
+    expect(screen.getByText("No other collaborators")).toBeDefined();
+  });
+
+  it("should provide keyboard focusable avatars with accessible labels", () => {
+    const collaborators: UniqueCollaborator[] = [
+      {
+        userId: "user-1",
+        displayName: "Alice",
+        role: "OWNER",
+        activeView: "board",
+        sessionCount: 2,
+      },
+    ];
+
+    render(<CollaboratorAvatarGroup collaborators={collaborators} currentUserId="user-1" />);
+    const avatar = screen.getByRole("img", { name: /Alice \(OWNER\) - You • 2 active tabs/i });
+    expect(avatar).toBeDefined();
+    expect(avatar.getAttribute("tabIndex")).toBe("0");
+  });
 });
