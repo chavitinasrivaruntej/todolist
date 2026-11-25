@@ -46,6 +46,7 @@ export const todos = pgTable(
   },
   (table) => [
     index("todos_list_id_idx").on(table.listId),
+    index("todos_list_id_status_idx").on(table.listId, table.status),
     index("todos_list_id_created_at_idx").on(table.listId, table.createdAt),
     index("todos_list_id_due_date_idx").on(table.listId, table.dueDate),
     index("todos_list_id_priority_idx").on(table.listId, table.priority),

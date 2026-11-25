@@ -20,9 +20,9 @@ Modern task managers frequently suffer from architectural anti-patterns: bloated
 
 ## 2. Project Development Status
 
-- **Current Development Phase**: **PHASE 11**
+- **Current Development Phase**: **PHASE 12**
 - **Implementation Status**: **100% COMPLETE & VERIFIED**
-- **Repository Milestone**: **Phase 11: Live Collaborator Presence & Realtime Board Updates Milestone**
+- **Repository Milestone**: **Phase 12: Analytics Dashboard, Velocity Metrics & CSV/JSON Export Milestone**
 
 ### Milestone Summary
 The project has successfully completed eleven foundational development phases, moving progressively from initial single-list persistence to full multi-tenant collaboration, notifications, advanced task metadata, dynamic color-coded tag organization, recurring task scheduling engines, secure cloud file attachments, and live collaborator presence with realtime board synchronization. Every layer—from Drizzle ORM schemas and Supabase Storage to Supabase Realtime WebSocket presence and React UI components—has undergone rigorous verification with automated tests, zero TypeScript errors, successful production build compilation, and end-to-end live Supabase database and realtime verification.
@@ -406,12 +406,8 @@ Caize Todo follows a structured 12-phase development trajectory:
 [Phase 9: Recurring Tasks & Schedule Engine] ► [DONE]
 [Phase 10: File Attachments & Asset Storage] ─► [DONE]
 [Phase 11: Realtime WebSockets & Live Presence] ─► [DONE]
-────────────────────────────────────────────────────
-[Phase 12: Analytics Dashboard & Productivity Insights] ► [PLANNED]
+[Phase 12: Analytics Dashboard & Exports] ───► [DONE]
 ```
-
-### Planned Future Phases (12)
-- **Phase 12 (Planned)**: Productivity metrics, weekly completion trends, velocity charts, and CSV/JSON export.
 
 ---
 
@@ -485,3 +481,40 @@ This checkpoint marks the official completion, verification, and consolidation o
 - **TypeScript Check**: Strict mode compilation verified (`npx tsc --noEmit`, 0 errors).
 - **ESLint Check**: Verified clean (`npm run lint`, 0 errors).
 - **Live Supabase Verification**: End-to-end verification script (`scripts/verify-stage3-live.ts`) successfully executed against Supabase Realtime infrastructure, verifying multi-tab presence tracking, multi-user aggregation, tab depart preservation, and private channel rejection for non-members.
+
+
+---
+
+## 14. Phase 12 — Analytics Dashboard, Velocity Metrics & CSV/JSON Export Milestone
+
+This checkpoint marks the completion of **Phase 12**, adding server-aggregated analytics, Monday-aligned historical velocity metrics, and secure streaming CSV/JSON exports without introducing external analytics databases or extra charting dependencies.
+
+### 1. Metric Definitions & Current-State vs. Historical Velocity
+- **Current-State Overview (`analytics.getOverview`)**: Computed via PostgreSQL `COUNT(*) FILTER (...)` and `GROUP BY` aggregations over current non-deleted rows in `todos`:
+  - `totalTasks`: Current non-deleted tasks in the authorized scope.
+  - `completedTasks`: Tasks currently in `DONE`.
+  - `openTasks`: Tasks currently in `TODO` or `IN_PROGRESS`.
+  - `overdueTasks`: Open tasks (`status <> 'DONE'`) with `due_date < reportingDate` (UTC `YYYY-MM-DD`). Tasks due today or marked `DONE` are never counted as overdue.
+  - `currentCompletionRate`: Current-state ratio `completedTasks / totalTasks * 100` (safe `0` for empty datasets). Explicitly labeled as current-state ratio, **not** historical velocity.
+  - **Distributions**: Status (`TODO`, `IN_PROGRESS`, `DONE`), Priority (`URGENT`, `HIGH`, `MEDIUM`, `LOW`), and Tag breakdown (multi-tag tasks contribute to each applicable tag).
+- **Historical Velocity (`analytics.getVelocity`)**: Computed from `activity_logs` (verified atomic, non-cascading on task deletion, no-op suppressed):
+  - `createdCount`: `TODO_CREATED`, `RECURRING_OCCURRENCE_GENERATED`, and `RECURRENCE_CREATED` (initial occurrence) events.
+  - `completedCount`: `TODO_STATUS_CHANGED` transitions into `DONE` (plus `TODO_CREATED` with `status = 'DONE'`). Reopened tasks do not erase prior completions, re-completing produces a new event, and duplicate updates to `DONE` are suppressed.
+  - `averageWeeklyCompletions`: `totalCompletedEvents / weeks.length`, including zero-activity weeks.
+  - `netActivity`: `totalCreated - totalCompletedEvents` (directional indicator, not current backlog).
+
+### 2. Reporting Timezone, Calendar Weeks & Historical Coverage
+- **Timezone**: All reporting intervals, `reportingDate`, and `date_trunc('week', created_at AT TIME ZONE 'UTC')` calendar-week buckets use **UTC** consistently. PostgreSQL `DATE` due dates (`YYYY-MM-DD`) are compared directly against `reportingDate` without local-timezone conversion.
+- **Reporting Ranges**: `7d`, `30d`, `90d` (default), and `12m` using half-open `[rangeStart, rangeEndExclusive)` intervals and Monday-starting calendar weeks, filling zero-activity weeks.
+- **Historical Coverage**: `historicalCoverageStart` surfaces the earliest recorded `activity_logs.created_at` timestamp in the authorized scope.
+
+### 3. CSV & JSON Export Security, Schema & Limits
+- **Endpoint**: `GET /api/exports/todos?format=csv|json[&listId=<uuid>]` (authenticated via Supabase server session; authorized via `ListPermissionService` for `OWNER`, `EDITOR`, and `VIEWER`).
+- **CSV Formula-Injection Mitigation**: `src/lib/export/csv-serializer.ts` wraps every field in RFC 4180 quotes and prefixes any cell starting with `=`, `+`, `-`, `@`, `|`, `\t`, or `\r` (even after leading whitespace or control characters) with `'`. *Trade-off*: spreadsheet-safe cells beginning with those characters carry a leading `'` in raw CSV text while stored database values remain untouched.
+- **JSON Schema**: Versioned envelope (`schemaVersion: 1`) containing `exportedAt`, `scope`, `totalTasks`, and `tasks` (`id`, `title`, `description`, `status`, `priority`, `dueDate`, `completedAt` from verified transition history or `null`, `createdAt`, `updatedAt`, `listId`, `listName`, `tags`, `recurrence`). Secrets, tokens, and signed storage URLs are never exported.
+- **Bounded Streaming & Limits**: Keyset-paginated batches (`EXPORT_BATCH_SIZE = 500` ordered by `(created_at ASC, id ASC)`) up to `MAX_EXPORT_TASKS = 10,000` (returning `413` if exceeded rather than silently truncating).
+
+### 4. Database Migration, Environment & Extensibility
+- **Migration**: `0013_analytics_indexes.sql` adds `todos_list_id_status_idx` on `todos(list_id, status)` and `activity_logs_list_action_created_idx` on `activity_logs(list_id, action, created_at)`.
+- **Environment Variables**: No new environment variables required.
+- **Extending Metrics & Exports**: Add new SQL aggregations in `src/server/repositories/analytics.repository.ts`, business calculations in `src/server/services/analytics.service.ts`, Zod contracts in `src/lib/validations/analytics.ts`, and export fields in `src/lib/export/csv-serializer.ts` & `json-serializer.ts`.
