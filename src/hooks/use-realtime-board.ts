@@ -93,6 +93,20 @@ function toClientTodoItem(t: RawTodoItemInput): TodoListItem {
   };
 }
 
+export interface RealtimeActivityNotification {
+  id: string;
+  message: string;
+  type:
+    | "TASK_CREATED"
+    | "TASK_UPDATED"
+    | "TASK_STATUS_CHANGED"
+    | "TASK_DELETED"
+    | "COLLABORATOR_JOINED"
+    | "COLLABORATOR_LEFT";
+  actorName?: string;
+  timestamp: number;
+}
+
 interface UseRealtimeBoardOptions {
   listId: string | null;
   filters?: TaskFilterState;
@@ -103,6 +117,7 @@ interface UseRealtimeBoardOptions {
   } | null;
   effectiveRole?: "OWNER" | "EDITOR" | "VIEWER";
   activeView?: "list" | "board" | "activity";
+  editingTodoId?: string | null;
 }
 
 export interface UniqueCollaborator {
@@ -117,6 +132,8 @@ export interface UniqueCollaborator {
 
 // Bounded LRU event ID cache to prevent duplicate deliveries
 const MAX_SEEN_EVENTS = 100;
+// Bounded LRU cache of recently deleted task IDs to prevent late resurrection
+const MAX_DELETED_TASK_HISTORY = 200;
 
 export function useRealtimeBoard({
   listId,
@@ -124,11 +141,82 @@ export function useRealtimeBoard({
   currentUser,
   effectiveRole = "OWNER",
   activeView = "list",
+  editingTodoId = null,
 }: UseRealtimeBoardOptions) {
   const [status, setStatus] = useState<RealtimeConnectionStatus>("IDLE");
   const [rawPresences, setRawPresences] = useState<CollaboratorPresenceState[]>([]);
+  const [recentActivity, setRecentActivity] = useState<RealtimeActivityNotification | null>(null);
+
   const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const deletedTaskIdsRef = useRef<Set<string>>(new Set());
   const subscriptionRef = useRef<ReturnType<typeof subscribeToListChannel> | null>(null);
+  const currentListIdRef = useRef<string | null>(listId);
+  const activityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastVisibilityRef = useRef<number>(0);
+
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const effectiveRoleRef = useRef(effectiveRole);
+  useEffect(() => {
+    effectiveRoleRef.current = effectiveRole;
+  }, [effectiveRole]);
+
+  const activeViewRef = useRef(activeView);
+  useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
+
+  const editingTodoIdRef = useRef(editingTodoId);
+  useEffect(() => {
+    editingTodoIdRef.current = editingTodoId;
+  }, [editingTodoId]);
+
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  // Track active listId in ref for stale callback prevention
+  useEffect(() => {
+    currentListIdRef.current = listId;
+  }, [listId]);
+
+  // Clean up activity timer on unmount
+  useEffect(() => {
+    return () => {
+      if (activityTimerRef.current) {
+        clearTimeout(activityTimerRef.current);
+      }
+    };
+  }, []);
+
+  const triggerActivity = useCallback(
+    (activity: Omit<RealtimeActivityNotification, "id" | "timestamp">) => {
+      if (activityTimerRef.current) {
+        clearTimeout(activityTimerRef.current);
+      }
+      const item: RealtimeActivityNotification = {
+        ...activity,
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+      };
+      setRecentActivity(item);
+      activityTimerRef.current = setTimeout(() => {
+        setRecentActivity(null);
+      }, 4000);
+    },
+    []
+  );
+
+  const dismissActivity = useCallback(() => {
+    if (activityTimerRef.current) {
+      clearTimeout(activityTimerRef.current);
+    }
+    setRecentActivity(null);
+  }, []);
 
   // Generate or retrieve persistent-per-tab session ID
   const [tabSessionId] = useState<string>(() => {
@@ -144,6 +232,10 @@ export function useRealtimeBoard({
   });
 
   const utils = trpc.useUtils();
+  const utilsRef = useRef(utils);
+  useEffect(() => {
+    utilsRef.current = utils;
+  }, [utils]);
 
   // Pre-flight authorization check
   const { data: authData, isError: isAuthError } = trpc.realtime.authorizeChannel.useQuery(
@@ -157,43 +249,48 @@ export function useRealtimeBoard({
   // Helper to test if a task satisfies active filters
   const matchesActiveFilters = useCallback(
     (task: { title: string; description?: string | null; priority?: string; tags?: Array<{ id: string }> }): boolean => {
-      if (!filters) return true;
+      const activeFilters = filtersRef.current;
+      if (!activeFilters) return true;
 
       // 1. Text Search Filter
-      if (filters.search && filters.search.trim().length > 0) {
-        const query = filters.search.trim().toLowerCase();
+      if (activeFilters.search && activeFilters.search.trim().length > 0) {
+        const query = activeFilters.search.trim().toLowerCase();
         const titleMatch = task.title.toLowerCase().includes(query);
         const descMatch = (task.description || "").toLowerCase().includes(query);
         if (!titleMatch && !descMatch) return false;
       }
 
       // 2. Priority Filter
-      if (filters.priority && task.priority !== filters.priority) {
+      if (activeFilters.priority && task.priority !== activeFilters.priority) {
         return false;
       }
 
       // 3. Tag Filters
-      if (filters.tagIds && filters.tagIds.length > 0) {
+      if (activeFilters.tagIds && activeFilters.tagIds.length > 0) {
         const taskTagIds = new Set((task.tags || []).map((t) => t.id));
-        if (filters.tagOperator === "OR") {
-          const hasAny = filters.tagIds.some((id) => taskTagIds.has(id));
+        if (activeFilters.tagOperator === "OR") {
+          const hasAny = activeFilters.tagIds.some((id) => taskTagIds.has(id));
           if (!hasAny) return false;
         } else {
           // AND operator
-          const hasAll = filters.tagIds.every((id) => taskTagIds.has(id));
+          const hasAll = activeFilters.tagIds.every((id) => taskTagIds.has(id));
           if (!hasAll) return false;
         }
       }
 
       return true;
     },
-    [filters]
+    []
   );
 
   // Dispatch incoming realtime domain events into TanStack Query cache
   const handleRealtimeEvent = useCallback(
     (envelope: RealtimeEventEnvelope) => {
-      if (!listId || envelope.listId !== listId) return;
+      const activeListId = currentListIdRef.current;
+      const activeFilters = filtersRef.current;
+
+      // Guard against events belonging to a different or previously viewed list
+      if (!activeListId || envelope.listId !== activeListId) return;
 
       // 1. Deduplicate by eventId
       if (seenEventIdsRef.current.has(envelope.eventId)) {
@@ -209,37 +306,75 @@ export function useRealtimeBoard({
         Boolean(envelope.clientSessionId) &&
         envelope.clientSessionId === tabSessionId;
 
+      const currentUserId = currentUserRef.current?.id;
+      const isOtherUser =
+        !isOriginatingTab &&
+        Boolean(envelope.actorId) &&
+        envelope.actorId !== currentUserId;
+
       switch (envelope.eventType) {
         case "TASK_CREATED": {
           const payload = envelope.payload as TaskCreatedPayload;
           if (isOriginatingTab) return; // Originating tab already added task via mutation
 
+          // Prevent resurrecting a task that was already deleted locally or remotely
+          if (deletedTaskIdsRef.current.has(payload.id)) {
+            return;
+          }
+
+          if (isOtherUser) {
+            triggerActivity({
+              type: "TASK_CREATED",
+              message: `Task "${payload.title}" created`,
+            });
+          }
+
           // Check if newly created task matches current filter criteria
           if (!matchesActiveFilters(payload)) {
             // Task belongs to list, but not to current filtered view; update list counts only
-            utils.todoList.list.invalidate();
+            utilsRef.current.todoList.list.invalidate();
+            return;
+          }
+
+          // If view has complex dueFilter or search, invalidate query for authoritative server sort/filter
+          if (activeFilters?.dueFilter && activeFilters.dueFilter !== "ALL") {
+            utilsRef.current.todo.list.invalidate({ listId: activeListId });
+            utilsRef.current.todoList.list.invalidate();
             return;
           }
 
           const clientItem = toClientTodoItem(payload);
 
           // Direct cache insertion
-          utils.todo.list.setData(
-            { listId, ...filters },
+          utilsRef.current.todo.list.setData(
+            { listId: activeListId, ...activeFilters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return [clientItem];
               if (existing.some((t) => t.id === clientItem.id)) return existing;
               return [clientItem, ...existing];
             }
           );
-          utils.todoList.list.invalidate();
+          utilsRef.current.todoList.list.invalidate();
           break;
         }
 
         case "TASK_STATUS_CHANGED": {
           const payload = envelope.payload as TaskStatusChangedPayload;
-          utils.todo.list.setData(
-            { listId, ...filters },
+
+          // Prevent resurrecting or modifying a deleted task
+          if (deletedTaskIdsRef.current.has(payload.id)) {
+            return;
+          }
+
+          if (isOtherUser) {
+            triggerActivity({
+              type: "TASK_STATUS_CHANGED",
+              message: `Task status changed to ${payload.status.replace("_", " ")}`,
+            });
+          }
+
+          utilsRef.current.todo.list.setData(
+            { listId: activeListId, ...activeFilters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return existing;
               return existing.map((t) => {
@@ -259,14 +394,27 @@ export function useRealtimeBoard({
               });
             }
           );
-          utils.todoList.list.invalidate();
+          utilsRef.current.todoList.list.invalidate();
           break;
         }
 
         case "TASK_UPDATED": {
           const payload = envelope.payload as TaskUpdatedPayload;
-          utils.todo.list.setData(
-            { listId, ...filters },
+
+          // Prevent resurrecting or modifying a deleted task
+          if (deletedTaskIdsRef.current.has(payload.id)) {
+            return;
+          }
+
+          if (isOtherUser) {
+            triggerActivity({
+              type: "TASK_UPDATED",
+              message: `Task "${payload.title}" updated`,
+            });
+          }
+
+          utilsRef.current.todo.list.setData(
+            { listId: activeListId, ...activeFilters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return existing;
               return existing.map((t) => {
@@ -290,8 +438,13 @@ export function useRealtimeBoard({
 
         case "TASK_ATTACHMENT_UPDATED": {
           const payload = envelope.payload as TaskAttachmentUpdatedPayload;
-          utils.todo.list.setData(
-            { listId, ...filters },
+
+          if (deletedTaskIdsRef.current.has(payload.todoId)) {
+            return;
+          }
+
+          utilsRef.current.todo.list.setData(
+            { listId: activeListId, ...activeFilters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return existing;
               return existing.map((t) => {
@@ -315,8 +468,23 @@ export function useRealtimeBoard({
 
         case "TASK_DELETED": {
           const payload = envelope.payload as TaskDeletedPayload;
-          utils.todo.list.setData(
-            { listId, ...filters },
+
+          // Record in deleted history to prevent late resurrection
+          deletedTaskIdsRef.current.add(payload.id);
+          if (deletedTaskIdsRef.current.size > MAX_DELETED_TASK_HISTORY) {
+            const first = deletedTaskIdsRef.current.values().next().value;
+            if (first) deletedTaskIdsRef.current.delete(first);
+          }
+
+          if (isOtherUser) {
+            triggerActivity({
+              type: "TASK_DELETED",
+              message: "A task was deleted",
+            });
+          }
+
+          utilsRef.current.todo.list.setData(
+            { listId: activeListId, ...activeFilters },
             (existing: TodoListItem[] | undefined) => {
               if (!existing) return existing;
               return existing.filter((t) => {
@@ -335,19 +503,19 @@ export function useRealtimeBoard({
               });
             }
           );
-          utils.todoList.list.invalidate();
+          utilsRef.current.todoList.list.invalidate();
           break;
         }
 
         case "RECURRENCE_CHANGED": {
-          utils.todoList.list.invalidate();
-          utils.todo.list.invalidate({ listId });
+          utilsRef.current.todoList.list.invalidate();
+          utilsRef.current.todo.list.invalidate({ listId: activeListId });
           break;
         }
 
         case "LIST_UPDATED": {
           // Authoritative list refresh
-          utils.todoList.list.invalidate();
+          utilsRef.current.todoList.list.invalidate();
           break;
         }
 
@@ -357,8 +525,8 @@ export function useRealtimeBoard({
           subscriptionRef.current = null;
           setStatus("UNAVAILABLE");
           setRawPresences([]);
-          utils.todo.list.setData({ listId, ...filters }, () => []);
-          utils.todoList.list.invalidate();
+          utilsRef.current.todo.list.setData({ listId: activeListId, ...activeFilters }, () => []);
+          utilsRef.current.todoList.list.invalidate();
           break;
         }
 
@@ -367,17 +535,17 @@ export function useRealtimeBoard({
           // If current user had their membership revoked, immediately tear down subscription and clear protected data
           if (
             payload.action === "REMOVED" &&
-            currentUser &&
-            payload.targetUserId === currentUser.id
+            currentUserId &&
+            payload.targetUserId === currentUserId
           ) {
             subscriptionRef.current?.unsubscribe();
             subscriptionRef.current = null;
             setStatus("UNAVAILABLE");
             setRawPresences([]);
-            utils.todo.list.setData({ listId, ...filters }, () => []);
-            utils.todoList.list.invalidate();
+            utilsRef.current.todo.list.setData({ listId: activeListId, ...activeFilters }, () => []);
+            utilsRef.current.todoList.list.invalidate();
           } else {
-            utils.sharing.getMembersAndInvites.invalidate({ listId });
+            utilsRef.current.sharing.getMembersAndInvites.invalidate({ listId: activeListId });
           }
           break;
         }
@@ -386,7 +554,7 @@ export function useRealtimeBoard({
           break;
       }
     },
-    [listId, filters, tabSessionId, matchesActiveFilters, currentUser, utils]
+    [tabSessionId, triggerActivity, matchesActiveFilters]
   );
 
   // Group multiple raw presences by unique userId
@@ -417,7 +585,7 @@ export function useRealtimeBoard({
     return Array.from(userMap.values());
   }, [rawPresences]);
 
-  // Establish private channel lifecycle
+  // Establish private channel lifecycle (strictly decoupled from activeView / editingTodoId)
   useEffect(() => {
     if (!listId || !authData?.authorized || isAuthError) {
       setStatus(isAuthError ? "UNAVAILABLE" : "IDLE");
@@ -425,36 +593,72 @@ export function useRealtimeBoard({
       return;
     }
 
-    const initialPresence: CollaboratorPresenceState | undefined = currentUser
+    const activeListId = listId;
+
+    const user = currentUserRef.current;
+    const initialPresence: CollaboratorPresenceState | undefined = user
       ? {
-          userId: currentUser.id,
+          userId: user.id,
           sessionId: tabSessionId,
-          displayName: currentUser.displayName || "Collaborator",
-          avatarUrl: currentUser.avatarUrl,
-          role: effectiveRole,
-          activeView,
+          displayName: user.displayName || "Collaborator",
+          avatarUrl: user.avatarUrl,
+          role: effectiveRoleRef.current,
+          activeView: activeViewRef.current,
+          editingTodoId: editingTodoIdRef.current,
           onlineAt: new Date().toISOString(),
         }
       : undefined;
 
     const subscription = subscribeToListChannel({
-      listId,
+      listId: activeListId,
       initialPresence,
       onEvent: handleRealtimeEvent,
       onPresenceSync: (presences) => {
         setRawPresences(presences);
       },
+      onPresenceJoin: (newPresences) => {
+        const currentUserId = currentUserRef.current?.id;
+        const other = newPresences.find((p) => p.userId !== currentUserId);
+        if (other) {
+          triggerActivity({
+            type: "COLLABORATOR_JOINED",
+            message: `${other.displayName || "A collaborator"} joined`,
+            actorName: other.displayName,
+          });
+        }
+      },
+      onPresenceLeave: (leftPresences) => {
+        const currentUserId = currentUserRef.current?.id;
+        const other = leftPresences.find((p) => p.userId !== currentUserId);
+        if (other) {
+          triggerActivity({
+            type: "COLLABORATOR_LEFT",
+            message: `${other.displayName || "A collaborator"} left`,
+            actorName: other.displayName,
+          });
+        }
+      },
       onStatusChange: (newStatus) => {
         setStatus(newStatus);
+      },
+      onReconnected: () => {
+        // Authoritative reconciliation on reconnection after packet loss or network drop
+        utilsRef.current.todo.list.invalidate({ listId: activeListId });
+        utilsRef.current.todoList.list.invalidate();
+        utilsRef.current.sharing.getMembersAndInvites.invalidate({ listId: activeListId });
       },
     });
     subscriptionRef.current = subscription;
 
-    // Reconnection and tab-resumption listener: Authoritative resync
+    // Visibility-change listener: Reconcile board queries when tab becomes visible
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        utils.todo.list.invalidate({ listId });
-        utils.todoList.list.invalidate();
+        const now = Date.now();
+        if (now - lastVisibilityRef.current > 2000) {
+          lastVisibilityRef.current = now;
+          utilsRef.current.todo.list.invalidate({ listId: activeListId });
+          utilsRef.current.todoList.list.invalidate();
+        }
       }
     };
 
@@ -469,17 +673,31 @@ export function useRealtimeBoard({
     listId,
     authData?.authorized,
     isAuthError,
-    currentUser,
+    currentUser?.id,
     tabSessionId,
-    effectiveRole,
-    activeView,
     handleRealtimeEvent,
-    utils,
+    triggerActivity,
   ]);
+
+  // Synchronize presence metadata without reconnecting channel
+  useEffect(() => {
+    if (subscriptionRef.current && status === "CONNECTED") {
+      subscriptionRef.current.updatePresence({
+        activeView,
+        editingTodoId,
+        role: effectiveRole,
+      });
+    }
+  }, [activeView, editingTodoId, effectiveRole, status]);
 
   return {
     status,
     collaborators: uniqueCollaborators,
     tabSessionId,
+    recentActivity,
+    dismissActivity,
+    updatePresence: useCallback((partial: Partial<CollaboratorPresenceState>) => {
+      subscriptionRef.current?.updatePresence(partial);
+    }, []),
   };
 }

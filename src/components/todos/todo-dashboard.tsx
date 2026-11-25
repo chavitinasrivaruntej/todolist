@@ -17,6 +17,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ShareListDialog } from "@/components/sharing/share-list-dialog";
 import { CollaboratorAvatarGroup } from "@/components/realtime/collaborator-avatar-group";
 import { RealtimeStatusBadge } from "@/components/realtime/realtime-status-badge";
+import { RealtimeActivityBanner } from "@/components/realtime/realtime-activity-banner";
 import { useRealtimeBoard } from "@/hooks/use-realtime-board";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +90,12 @@ function TodoDashboardInner() {
   const isEditor = effectiveRole === "EDITOR";
 
   // Realtime board updates & presence
-  const { status: realtimeStatus, collaborators } = useRealtimeBoard({
+  const {
+    status: realtimeStatus,
+    collaborators,
+    recentActivity,
+    dismissActivity,
+  } = useRealtimeBoard({
     listId: selectedListId,
     filters,
     currentUser,
@@ -203,6 +209,12 @@ function TodoDashboardInner() {
                 </div>
 
                 <div className="flex items-center gap-2.5 ml-auto">
+                  {/* Transient Collaborator Activity Feedback */}
+                  <RealtimeActivityBanner
+                    activity={recentActivity}
+                    onDismiss={dismissActivity}
+                  />
+
                   {/* Live Collaborators Presence Stack */}
                   <CollaboratorAvatarGroup
                     collaborators={collaborators}
