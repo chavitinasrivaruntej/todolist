@@ -66,6 +66,11 @@ export const activityLogs = pgTable(
       table.createdAt.desc(),
       table.id.desc()
     ),
+    index("activity_logs_list_action_created_idx").on(
+      table.listId,
+      table.action,
+      table.createdAt
+    ),
     index("activity_logs_actor_id_idx").on(table.actorId),
   ]
 );

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { ListSidebar } from "@/components/lists/list-sidebar";
@@ -30,6 +31,7 @@ import {
   Crown,
   Loader2,
   Tag as TagIcon,
+  BarChart3,
 } from "lucide-react";
 
 const initialFilters: TaskFilterState = {
@@ -149,6 +151,17 @@ function TodoDashboardInner() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Link href={selectedListId ? `/analytics?listId=${selectedListId}` : "/analytics"}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs border-neutral-300 dark:border-neutral-700"
+                title="View Analytics & Exports"
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Analytics</span>
+              </Button>
+            </Link>
             <RealtimeStatusBadge status={realtimeStatus} />
             <NotificationBell onSelectList={(id) => handleSelectList(id)} />
             <UserMenu />
